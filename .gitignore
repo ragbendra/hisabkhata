@@ -1,0 +1,16 @@
+node_modules/
+dist/
+__pycache__/
+*.py[cod]
+*.tsbuildinfo
+.env
+.venv/
+venv/
+*.db
+backups/
+.pytest_cache/
+backend/app/seed.py
+backend/tests/test_seed.py
+DEPLOY-NATIVE.md
+DEPLOY.md
+.neon
