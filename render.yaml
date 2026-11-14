@@ -1,0 +1,33 @@
+# If using Render's managed database, uncomment this block:
+# databases:
+#   - name: hisab-db
+#     databaseName: hisab
+#     user: hisab
+#     plan: free
+#     region: singapore
+
+services:
+  - type: web
+    name: hisab
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    region: singapore
+    envVars:
+      - key: FK_DATABASE_URL
+        sync: false
+        # When using Render's managed database above, uncomment this instead:
+        # fromDatabase:
+        #   name: hisab-db
+        #   property: connectionString
+      - key: FK_APP_BASE_URL
+        sync: false
+        # Tip: set to your custom domain
+      - key: FK_COOKIE_SECURE
+        value: "true"
+      - key: FK_STATIC_DIR
+        value: "/app/frontend/dist"
+      - key: WEB_CONCURRENCY
+        value: "2"
+
+

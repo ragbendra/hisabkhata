@@ -1,0 +1,22 @@
+name: Deploy
+
+# Manual only: Actions tab > Deploy > Run workflow.
+# Repository secrets needed: DEPLOY_HOST, DEPLOY_USER, DEPLOY_SSH_KEY
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy over SSH
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          USER_NAME: ${{ secrets.DEPLOY_USER }}
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts
+          ssh -i ~/.ssh/deploy_key "$USER_NAME@$HOST" "cd /opt/hisab && ./deploy/deploy.sh"

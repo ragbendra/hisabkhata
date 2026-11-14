@@ -1,0 +1,14 @@
+.git
+.github
+**/node_modules
+**/dist
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+**/*.db
+**/.env
+backups
+docs
+backend/tests
+frontend/tests
+*.md
