@@ -1,0 +1,137 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Ivory and Pine: warm paper, deep pine green, one fine line of brass. */
+:root {
+  color-scheme: light dark;
+  --bg: #faf8f4;
+  --surface: #ffffff;
+  --ink: #1b1a17;
+  --muted: #6f6b63;
+  --line: #e7e2d8;
+  --accent: #1f4d3a;
+  --accent-press: #173a2c;
+  --accent-ink: #ffffff;
+  --tint: #e8efea;
+  --owed: #b4442f;
+  --owed-tint: #f6e7e3;
+  --recv: #2f6f4f;
+  --warn: #8f5f10;
+  --warn-tint: #f7ebd6;
+  --advance: #2f5f8f;
+  --gold: #b08d57;
+  --b1: #7fa38e;
+  --b2: #c8b77f;
+  --b3: #d98f5b;
+  --b4: #b4442f;
+  --shadow: 0 10px 28px rgba(27, 26, 23, 0.12);
+  --shadow-up: 0 -8px 28px rgba(27, 26, 23, 0.1);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #12140f;
+    --surface: #1a1d17;
+    --ink: #ece8df;
+    --muted: #a39f95;
+    --line: #2b2e26;
+    --accent: #6fb58f;
+    --accent-press: #8ac7a4;
+    --accent-ink: #0e1a13;
+    --tint: #1f2b24;
+    --owed: #e07a62;
+    --owed-tint: #35201b;
+    --recv: #7cc49c;
+    --warn: #e0b057;
+    --warn-tint: #33291a;
+    --advance: #8db8e0;
+    --gold: #c9a56a;
+    --b1: #6fb58f;
+    --b2: #d2c185;
+    --b3: #e5a06a;
+    --b4: #e07a62;
+    --shadow: 0 10px 28px rgba(0, 0, 0, 0.5);
+    --shadow-up: 0 -8px 28px rgba(0, 0, 0, 0.5);
+  }
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  @apply bg-bg font-sans text-base text-ink antialiased;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior-y: none;
+  font-variant-numeric: tabular-nums;
+}
+
+@layer components {
+  .card {
+    @apply rounded-card bg-surface p-4 ring-1 ring-line;
+  }
+  /* a card whose rows are separated by hairlines and touch the edges */
+  .card-list {
+    @apply divide-y divide-line overflow-hidden rounded-card bg-surface ring-1 ring-line;
+  }
+  .field {
+    @apply min-h-[48px] w-full rounded-xl bg-bg px-3.5 text-base font-medium text-ink ring-1 ring-line placeholder:font-normal placeholder:text-muted;
+  }
+  .btn {
+    @apply inline-flex min-h-touch min-w-touch items-center justify-center rounded-full px-5 text-base font-semibold transition active:opacity-80 disabled:opacity-50;
+  }
+  .btn-primary {
+    @apply btn bg-brand text-onaccent hover:bg-brand-dark;
+  }
+  .btn-secondary {
+    @apply btn bg-surface text-ink ring-1 ring-line;
+  }
+  .btn-danger {
+    @apply btn bg-owed text-white;
+  }
+  .label {
+    @apply mb-1 block text-xs font-medium text-muted;
+  }
+  .muted {
+    @apply text-sm text-muted;
+  }
+  .sec-title {
+    @apply text-[13px] font-semibold text-muted;
+  }
+  .chip {
+    @apply inline-flex min-h-touch items-center rounded-full bg-surface px-4 text-sm font-medium text-muted ring-1 ring-line;
+  }
+  .chip-on {
+    @apply bg-tint text-brand ring-[1.5px] ring-brand;
+  }
+  /* round monogram used instead of photos */
+  .avatar {
+    @apply flex h-10 w-10 flex-none items-center justify-center rounded-full bg-tint font-semibold text-brand;
+  }
+  .money {
+    @apply font-serif font-semibold;
+  }
+  /* segmented control: Ledger / Bills / Payments */
+  .seg {
+    @apply flex min-h-[44px] rounded-full bg-tint p-[3px];
+  }
+  .seg-btn {
+    @apply flex-1 rounded-full text-sm font-semibold text-muted;
+  }
+  .seg-on {
+    @apply bg-surface text-brand shadow-sm;
+  }
+}
+
+/* visible focus states */
+:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.pb-nav {
+  padding-bottom: calc(6.5rem + env(safe-area-inset-bottom));
+}
