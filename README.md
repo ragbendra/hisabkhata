@@ -5,6 +5,13 @@ A mobile-first sales and collection ledger for a wholesale fruit shop in Biratna
 **Status:** in use. A wholesale fruit trader is using it for his daily ledger, and the interface is being adjusted from his feedback.
 **License:** PolyForm Noncommercial 1.0.0. Author: Raghabendra Kumar Shah.
 
+## Live demo
+
+Use the deployed app's login screen with this read-only-for-demo account. It contains three fictional customers and sample fruit sales/payments; please do not enter real data.
+
+- Login: `demo@hisab.app`
+- Password: `TryHisab2026!`
+
 ## The problem
 
 The owner writes a paper bill, then copies the bill number and total into a paper ledger. The fruit, kg and rate exist only on the slip the customer takes away.

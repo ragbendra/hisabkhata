@@ -43,6 +43,8 @@ def main() -> None:
     c.add_argument("--email", required=True)
     c.add_argument("--owner-name")
     c.add_argument("--password")
+    d = sub.add_parser("create-demo", help="create the isolated public demo shop")
+    d.add_argument("--yes", action="store_true", help="required because this writes to the configured database")
     sub.add_parser("init-db")
     args = p.parse_args()
 
@@ -56,6 +58,12 @@ def main() -> None:
         if len(pw) < 8:
             sys.exit("Password must be at least 8 characters")
         create_shop(args.name, args.email, pw, args.owner_name)
+    elif args.cmd == "create-demo":
+        if not args.yes:
+            sys.exit("Run create-demo with --yes to create the public demo shop.")
+        from .demo import create_demo
+
+        create_demo()
 
 
 if __name__ == "__main__":
