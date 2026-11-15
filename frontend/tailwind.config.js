@@ -2,7 +2,7 @@
 // Ivory and Pine. Every colour is a CSS variable (see src/index.css), so dark mode needs no dark: variants.
 export default {
   content: ["./index.html", "./src/**/*.{ts,tsx}"],
-  darkMode: "media",
+  darkMode: ["selector", '[data-theme="dark"]'],
   theme: {
     extend: {
       colors: {
@@ -12,6 +12,9 @@ export default {
         muted: "var(--muted)",
         line: "var(--line)",
         tint: "var(--tint)",
+        paper: "var(--paper)",
+        paper2: "var(--paper-2)",
+        rule: "var(--rule)",
         owed: "var(--owed)",
         owedtint: "var(--owed-tint)",
         recv: "var(--recv)",

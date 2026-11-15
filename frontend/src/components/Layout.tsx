@@ -2,8 +2,9 @@ import { NavLink, Outlet, Link, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useMe, useOnline } from "../lib/queries";
 import { setLang } from "../lib/i18n";
+import { useTheme } from "../lib/theme";
 import InstallHint from "./InstallHint";
-import { IconBook, IconPlus, IconReceipt, IconSliders } from "./icons";
+import { IconBook, IconMoon, IconPlus, IconReceipt, IconSliders, IconSun } from "./icons";
 
 export function LangToggle() {
   const { i18n } = useTranslation();
@@ -29,6 +30,22 @@ export function LangToggle() {
   );
 }
 
+/** Day / night. Day is the default; the choice is remembered on this phone. */
+export function ThemeToggle() {
+  const { t } = useTranslation();
+  const [theme, setTheme] = useTheme();
+  const night = theme === "dark";
+  return (
+    <button
+      className="flex h-11 w-11 items-center justify-center rounded-full ring-1 ring-line"
+      aria-label={night ? t("themeToDay") : t("themeToNight")}
+      onClick={() => setTheme(night ? "light" : "dark")}
+    >
+      {night ? <IconSun size={20} /> : <IconMoon size={20} />}
+    </button>
+  );
+}
+
 export default function Layout() {
   const { t } = useTranslation();
   const me = useMe().data!;
@@ -48,6 +65,7 @@ export default function Layout() {
           {me.shop.name}
         </Link>
         <LangToggle />
+        <ThemeToggle />
         {me.role === "owner" && (
           <Link to="/settings" className="flex h-11 w-11 items-center justify-center rounded-full" aria-label={t("settings")}>
             <IconSliders size={22} />

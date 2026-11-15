@@ -3,8 +3,17 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="theme-color" content="#faf8f4" media="(prefers-color-scheme: light)" />
-    <meta name="theme-color" content="#12140f" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#faf8f4" />
+    <script>
+      // Day mode is the default. Set the saved choice before the first paint, so there is no flash.
+      try {
+        var night = localStorage.getItem("hisab-theme") === "dark";
+        document.documentElement.setAttribute("data-theme", night ? "dark" : "light");
+        document.querySelector('meta[name="theme-color"]').setAttribute("content", night ? "#12140f" : "#faf8f4");
+      } catch (e) {
+        document.documentElement.setAttribute("data-theme", "light");
+      }
+    </script>
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="Hisab" />
