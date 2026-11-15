@@ -3,9 +3,9 @@ import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import BsDatePicker from "../components/BsDatePicker";
-import HistoryPanel from "../components/History";
+import Ledger from "../components/Ledger";
 import { IconBack, IconPlus, initial } from "../components/icons";
-import { Balance, ConfirmButton, ErrorBox, Modal, Section, Spinner } from "../components/ui";
+import { Balance, ConfirmButton, ErrorBox, Modal, Spinner } from "../components/ui";
 import { api } from "../lib/api";
 import { decimals, lineAmount, nameMatches, norm, normDigits, parseNum, todayNpl } from "../lib/calc";
 import { useFmt } from "../lib/format";
@@ -15,7 +15,7 @@ import { PAY_MODES, type HistoryEntry, type PayMode, type Sheet } from "../lib/t
 
 export default function CustomerPage() {
   const { id = "" } = useParams();
-  const [params, setParams] = useSearchParams();
+  const [params] = useSearchParams();
   const { t } = useTranslation();
   const f = useFmt();
   const nav = useNavigate();
@@ -28,7 +28,6 @@ export default function CustomerPage() {
   const [open, setOpen] = useState<HistoryEntry | null>(null);
   const [modal, setModal] = useState<null | "edit" | "merge" | "date">(null);
   const [err, setErr] = useState<string | null>(null);
-  const [showAllOwed, setShowAllOwed] = useState(false);
 
   const mine = useMemo(() => groupPending(outbox).get(id), [outbox, id]);
   const focusSale = params.get("sale");
@@ -77,7 +76,6 @@ export default function CustomerPage() {
   const s: Sheet = sheetQ.data!;
   const delta = mine?.delta ?? 0;
   const balance = parseNum(s.balance) + delta;
-  const stillOwed = delta === 0 ? s.still_owed : [];
 
   return (
     <div className="space-y-1">
@@ -117,81 +115,9 @@ export default function CustomerPage() {
         </div>
       </div>
 
-      <div className="card mt-5">
-        {mine && mine.rows.length > 0 && <p className="mb-3 rounded-xl bg-warntint p-3 text-sm text-warn">{t("includesWaiting", { n: f.digits(mine.rows.length) })}</p>}
-
-        <dl className="grid grid-cols-2 gap-x-3 gap-y-3 text-sm">
-          <Stat label={t("totalSold")} value={f.money(s.total_sold)} />
-          <Stat label={t("totalReceived")} value={f.money(s.total_received)} />
-          <Stat label={t("paymentsCount")} value={f.digits(s.payments_count)} />
-          <Stat label={t("lastPaid")} value={s.last_paid ? f.date(f.npDay(s.last_paid)) : "—"} />
-          {parseFloat(s.total_discounts) > 0 && <Stat label={t("discountsToday")} value={f.money(s.total_discounts)} />}
-        </dl>
-
-        <div className="mt-3 flex items-center justify-between gap-2 border-t border-line pt-3">
-          <div>
-            <div className="text-xs text-muted">{t("collectionDate")}</div>
-            <div className="font-semibold">{s.next_collection_date ? f.date(s.next_collection_date) : t("noDate")}</div>
-          </div>
-          <div className="flex gap-2">
-            {owner && <button className="btn-secondary" onClick={() => setModal("date")}>{t("change")}</button>}
-          </div>
-        </div>
-        {err && <p role="alert" className="mt-2 text-sm text-owed">{err}</p>}
-        <div className="mt-3 flex flex-wrap gap-2">
-          {owner && <button className="btn-secondary" onClick={() => setModal("edit")}>{t("edit")}</button>}
-          {owner && <button className="btn-secondary" onClick={() => setModal("merge")}>{t("merge")}</button>}
-          {owner && (
-            <ConfirmButton
-              label={s.archived ? t("unarchive") : t("archive")}
-              confirmLabel={t("tapAgainConfirm")}
-              onConfirm={() => archive.mutate(!s.archived)}
-            />
-          )}
-        </div>
-        {owner && s.possible_duplicate_of && (
-          <div className="mt-3 rounded-xl bg-warntint p-3 text-sm">
-            {t("possibleDuplicateNote")}{" "}
-            <Link className="underline" to={`/customer/${s.possible_duplicate_of}`}>{t("viewOther")}</Link>
-            <button className="ml-3 underline" onClick={() => void api(`/customers/${id}/dismiss-duplicate`, { body: {} }).then(invalidate)}>
-              {t("notDuplicate")}
-            </button>
-          </div>
-        )}
-      </div>
-
-      {/* FR-49 */}
-      {stillOwed.length > 0 && (
-        <Section title={`${t("stillOwedFor")} (${t("estimated")})`}>
-          <div className="card-list">
-            {(showAllOwed ? stillOwed : stillOwed.slice(0, 3)).map((o) => (
-              <button
-                key={o.ref_id}
-                className="flex min-h-[60px] w-full items-center justify-between gap-2 px-4 py-2.5 text-left"
-                onClick={() => {
-                  if (o.kind === "sale") setParams({ sale: o.ref_id }, { replace: true });
-                }}
-              >
-                <span>
-                  <span className="block font-medium">
-                    {o.kind === "opening" ? t("openingBalance") : `${t("bill")} ${o.bill_no ?? ""}`.trim()} · {f.date(o.date)}
-                  </span>
-                  <span className="muted">
-                    {t("billAmount")} {f.money(o.original)} · {t("owingDays", { n: f.digits(o.age_days) })}
-                  </span>
-                </span>
-                <span className="money text-owed">{f.money(o.left)}</span>
-              </button>
-            ))}
-          </div>
-          {stillOwed.length > 3 && (
-            <button className="btn-secondary mt-2 w-full" onClick={() => setShowAllOwed(!showAllOwed)}>
-              {showAllOwed ? t("showFewer") : t("showAllN", { n: f.digits(stillOwed.length) })}
-            </button>
-          )}
-        </Section>
+      {mine && mine.rows.length > 0 && (
+        <p className="mt-5 rounded-xl bg-warntint p-3 text-sm text-warn">{t("includesWaiting", { n: f.digits(mine.rows.length) })}</p>
       )}
-
       {mine?.rows.map((r) => (
         <div key={r.id} className="card mt-3 bg-warntint">
           <div className="text-sm font-semibold">{t("notSentYet")}</div>
@@ -202,13 +128,49 @@ export default function CustomerPage() {
         </div>
       ))}
 
-      {/* FR-16: grouped by month, compact rows, three views */}
-      <HistoryPanel entries={histQ.data ?? []} loading={histQ.isLoading} focusSale={focusSale} onOpen={setOpen} />
+      {/* the khata itself: the ledger page opens straight away */}
+      <div className="mt-5">
+        <Ledger entries={histQ.data ?? []} loading={histQ.isLoading} focusSale={focusSale} onOpen={setOpen} />
+      </div>
+
+      {owner && (
+        <details className="card mt-5">
+          <summary className="flex min-h-touch cursor-pointer items-center font-semibold">{t("moreOptions")}</summary>
+          <div className="mt-2 flex items-center justify-between gap-2 border-t border-line pt-3">
+            <div>
+              <div className="text-xs text-muted">{t("collectionDate")}</div>
+              <div className="font-semibold">{s.next_collection_date ? f.date(s.next_collection_date) : t("noDate")}</div>
+            </div>
+            <button className="btn-secondary" onClick={() => setModal("date")}>{t("change")}</button>
+          </div>
+          {err && <p role="alert" className="mt-2 text-sm text-owed">{err}</p>}
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button className="btn-secondary" onClick={() => setModal("edit")}>{t("edit")}</button>
+            <button className="btn-secondary" onClick={() => setModal("merge")}>{t("merge")}</button>
+            <ConfirmButton
+              label={s.archived ? t("unarchive") : t("archive")}
+              confirmLabel={t("tapAgainConfirm")}
+              onConfirm={() => archive.mutate(!s.archived)}
+            />
+          </div>
+          {s.possible_duplicate_of && (
+            <div className="mt-3 rounded-xl bg-warntint p-3 text-sm">
+              {t("possibleDuplicateNote")}{" "}
+              <Link className="underline" to={`/customer/${s.possible_duplicate_of}`}>{t("viewOther")}</Link>
+              <button className="ml-3 underline" onClick={() => void api(`/customers/${id}/dismiss-duplicate`, { body: {} }).then(invalidate)}>
+                {t("notDuplicate")}
+              </button>
+            </div>
+          )}
+        </details>
+      )}
 
       {open && (
         <EntryDetail
           entry={open}
           owner={owner}
+          paidWith={open.paid_with ? histQ.data?.find((x) => x.id === open.paid_with?.id) : undefined}
+          onSwitch={setOpen}
           onClose={() => setOpen(null)}
           onChanged={() => {
             setOpen(null);
@@ -245,12 +207,29 @@ function Stat({ label, value }: { label: string; value: string }) {
 
 // ------------------------------------------------------------------------------------------------ detail (FR-17)
 
-function EntryDetail({ entry: e, owner, onClose, onChanged }: { entry: HistoryEntry; owner: boolean; onClose: () => void; onChanged: () => void }) {
+function EntryDetail({
+  entry: e,
+  owner,
+  paidWith,
+  onSwitch,
+  onClose,
+  onChanged,
+}: {
+  entry: HistoryEntry;
+  owner: boolean;
+  paidWith?: HistoryEntry;
+  onSwitch: (e: HistoryEntry) => void;
+  onClose: () => void;
+  onChanged: () => void;
+}) {
   const { t } = useTranslation();
   const f = useFmt();
   const [editing, setEditing] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const base = e.type === "sale" ? "/sales" : "/payments";
+  // a bill and the money received with it are one line in the ledger, so they share one before/after
+  const before = paidWith && paidWith.balance_after === e.balance_before ? paidWith.balance_before : e.balance_before;
+  const after = paidWith && paidWith.balance_before === e.balance_after ? paidWith.balance_after : e.balance_after;
 
   const doVoid = useMutation({
     mutationFn: () => api(`${base}/${e.id}/void`, { body: {} }),
@@ -285,6 +264,16 @@ function EntryDetail({ entry: e, owner, onClose, onChanged }: { entry: HistoryEn
               </tbody>
             </table>
             <Stat label={t("netTotal")} value={f.money(e.amount)} />
+            {paidWith && (
+              <button className="block w-full rounded-xl bg-tint p-3 text-left" onClick={() => onSwitch(paidWith)}>
+                <span className="muted block">{t("paidWithBill")}</span>
+                <span className={`font-semibold ${paidWith.voided ? "line-through" : ""}`}>
+                  {f.money(paidWith.amount)} · {t(`mode_${paidWith.mode ?? "cash"}`)}
+                </span>
+                {paidWith.voided && <span className="ml-2 text-owed">{t("voided")}</span>}
+                <span className="muted block text-xs">{t("paidWithBillNote")}</span>
+              </button>
+            )}
           </>
         )}
         {(e.type === "payment" || e.type === "discount") && (
@@ -302,8 +291,8 @@ function EntryDetail({ entry: e, owner, onClose, onChanged }: { entry: HistoryEn
           </>
         )}
         <div className="grid grid-cols-2 gap-2">
-          <div><dt className="muted">{t("balanceBefore")}</dt><dd><Balance value={e.balance_before} /></dd></div>
-          <div><dt className="muted">{t("balanceAfter")}</dt><dd><Balance value={e.balance_after} /></dd></div>
+          <div><dt className="muted">{t("balanceBefore")}</dt><dd><Balance value={before} /></dd></div>
+          <div><dt className="muted">{t("balanceAfter")}</dt><dd><Balance value={after} /></dd></div>
         </div>
         <Stat label={t("enteredBy")} value={`${e.entered_by ?? "?"} · ${f.dateTime(e.entered_at)}`} />
         {e.voided && <p className="font-semibold text-owed">{t("voided")}{e.void_reason ? `: ${e.void_reason}` : ""}</p>}

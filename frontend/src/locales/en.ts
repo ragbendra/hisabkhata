@@ -254,6 +254,21 @@ export const en = {
   noChange: "No change",
   futureDate: "The date cannot be in the future.",
   addAnotherPast: "Add another for {{name}} on {{date}}",
+  // ledger page
+  sortName: "Name A–Z",
+  ledgerParticulars: "Particulars",
+  ledgerDebit: "Debit",
+  ledgerCredit: "Credit",
+  ledgerBalance: "Balance",
+  ledgerHint: "Tap a row to see the full bill",
+  ledgerUnit: "Debit: still to be paid. Credit: paid. All amounts in Rs.",
+  onCredit: "On credit",
+  online: "Online",
+  moreOptions: "More options",
+  paidWithBill: "Received with this bill",
+  paidWithBillNote: "Open it to edit or void this payment on its own.",
+  themeToNight: "Switch to night mode",
+  themeToDay: "Switch to day mode",
 };
 
 export type Messages = typeof en;

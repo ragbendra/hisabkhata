@@ -103,6 +103,10 @@ export interface HistoryEntry {
   lines?: SaleLineOut[];
   mode?: string;
   note?: string | null;
+  /** a sale: the money received at the counter with this bill (saved in the same entry) */
+  paid_with?: { id: string; amount: string; mode: string; voided: boolean } | null;
+  /** a payment: the bill it was received with */
+  with_sale?: string | null;
   balance_before: string;
   balance_after: string;
 }
