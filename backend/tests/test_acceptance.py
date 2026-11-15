@@ -32,6 +32,19 @@ def test_entry_with_three_lines_and_payment(owner):
     assert [h["type"] for h in hist] == ["sale", "payment"]  # stored as separate records
 
 
+def test_history_links_payment_made_with_the_bill(owner):
+    cid = make_customer(owner, lines=[("Apple", 100, 100)], received=3000)  # bill 10,000, 3,000 paid now
+    later = owner.post("/entries", entry(customer=cid, received=2000))  # an instalment, a separate entry
+    assert later.status_code == 200, later.text
+    hist = owner.get(f"/customers/{cid}/history", params={"order": "asc"}).json()
+    sale = next(h for h in hist if h["type"] == "sale")
+    pays = [h for h in hist if h["type"] == "payment"]
+    assert sale["paid_with"]["amount"] == "3000.00" and sale["paid_with"]["id"] == pays[0]["id"]
+    assert pays[0]["with_sale"] == sale["id"]
+    assert "with_sale" not in pays[1]  # the instalment stands on its own line
+    assert hist[-1]["balance_after"] == "5000.00"
+
+
 def test_line_amount_rounds_half_up(owner):
     r = owner.post("/entries", entry(new="Round", lines=[("Apple", "0.5", 25)]))  # 12.5 -> 13
     assert r.json()["sale"]["total"] == "13.00"

@@ -116,8 +116,8 @@ def _touch(st: CustState, d: date):
         st.last_activity = d
 
 
-def bulk_state(db: Session, shop_id) -> dict[uuid.UUID, CustState]:
-    """Ledger state for every customer of the shop (voided entries excluded)."""
+def bulk_state(db: Session, shop_id, customer_id: uuid.UUID | None = None) -> dict[uuid.UUID, CustState]:
+    """Ledger state for every customer of the shop, or for one customer (voided entries excluded)."""
     states: dict[uuid.UUID, CustState] = {}
 
     def st(cid) -> CustState:
@@ -128,7 +128,7 @@ def bulk_state(db: Session, shop_id) -> dict[uuid.UUID, CustState]:
     rows = db.execute(
         select(Opening.id, Opening.customer_id, Opening.amount, Opening.as_of_date, Opening.created_at)
         .join(Customer, Customer.id == Opening.customer_id)
-        .where(Customer.shop_id == shop_id)
+        .where(Customer.shop_id == shop_id, *([Opening.customer_id == customer_id] if customer_id else []))
     )
     for oid, cid, amount, as_of, created in rows:
         s = st(cid)
@@ -141,7 +141,7 @@ def bulk_state(db: Session, shop_id) -> dict[uuid.UUID, CustState]:
 
     rows = db.execute(
         select(Sale.id, Sale.customer_id, Sale.bill_date, Sale.total, Sale.bill_no, Sale.created_at).where(
-            Sale.shop_id == shop_id, Sale.voided_at.is_(None)
+            Sale.shop_id == shop_id, Sale.voided_at.is_(None), *([Sale.customer_id == customer_id] if customer_id else [])
         )
     )
     for sid, cid, bdate, total, bill_no, created in rows:
@@ -152,7 +152,7 @@ def bulk_state(db: Session, shop_id) -> dict[uuid.UUID, CustState]:
 
     rows = db.execute(
         select(Payment.customer_id, Payment.kind, Payment.amount, Payment.paid_at).where(
-            Payment.shop_id == shop_id, Payment.voided_at.is_(None)
+            Payment.shop_id == shop_id, Payment.voided_at.is_(None), *([Payment.customer_id == customer_id] if customer_id else [])
         )
     )
     for cid, kind, amount, paid_at in rows:
@@ -170,7 +170,8 @@ def bulk_state(db: Session, shop_id) -> dict[uuid.UUID, CustState]:
 
 
 def state_for(db: Session, shop_id, customer_id) -> CustState:
-    return bulk_state(db, shop_id).get(customer_id, CustState())
+    # one customer only: a customer page must not read every sale and payment of the shop
+    return bulk_state(db, shop_id, customer_id).get(customer_id, CustState())
 
 
 def balance_for(db: Session, shop_id, customer_id) -> Decimal:
@@ -302,4 +303,15 @@ def history(db: Session, shop_id, customer_id) -> list[dict]:
         running += e.pop("_delta")
         e["balance_after"] = money(running)
         e.pop("_key")
+
+    # A bill and the money received with it are saved in one go (same person, same moment).
+    # Link them, so the ledger can show "bill 10,000, paid 3,000 now" as a single line.
+    sale_at = {(e["entered_by_id"], e["entered_at"]): e for e in entries if e["type"] == "sale"}
+    for e in entries:
+        if e["type"] != "payment":
+            continue
+        s = sale_at.get((e["entered_by_id"], e["entered_at"]))
+        if s is not None and "paid_with" not in s:
+            s["paid_with"] = {"id": e["id"], "amount": e["amount"], "mode": e["mode"], "voided": e["voided"]}
+            e["with_sale"] = s["id"]
     return entries
