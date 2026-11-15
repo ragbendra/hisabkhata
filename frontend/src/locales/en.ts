@@ -165,6 +165,8 @@ export const en = {
   archived: "Archived",
   archive: "Archive",
   unarchive: "Unarchive",
+  deleteCustomer: "Delete customer and all entries",
+  deleteCustomerConfirm: "Tap again to permanently delete",
   merge: "Merge",
   mergeHelp: "Move all entries of {{name}} into another customer. Nothing is deleted.",
   mergeConfirm: "Merge {{from}} into {{to}}. Combined balance: {{balance}}.",

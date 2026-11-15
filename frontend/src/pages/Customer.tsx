@@ -8,8 +8,9 @@ import { IconBack, IconPlus, initial } from "../components/icons";
 import { Balance, ConfirmButton, ErrorBox, Modal, Spinner } from "../components/ui";
 import { api } from "../lib/api";
 import { decimals, lineAmount, nameMatches, norm, normDigits, parseNum, todayNpl } from "../lib/calc";
+import { db } from "../lib/db";
 import { useFmt } from "../lib/format";
-import { groupPending } from "../lib/pending";
+import { entryCustomerId, groupPending } from "../lib/pending";
 import { useCustomers, useHistory, useMe, useSheet } from "../lib/queries";
 import { PAY_MODES, type HistoryEntry, type PayMode, type Sheet } from "../lib/types";
 
@@ -57,6 +58,22 @@ export default function CustomerPage() {
   const archive = useMutation({
     mutationFn: (archived: boolean) => api(`/customers/${id}/archive`, { body: { archived } }),
     onSuccess: invalidate,
+    onError: (e) => setErr(e instanceof Error ? e.message : String(e)),
+  });
+  const remove = useMutation({
+    mutationFn: () => api(`/customers/${id}`, { method: "DELETE" }),
+    onSuccess: async () => {
+      const pending = await db.outbox.toArray();
+      await Promise.all([
+        ...pending.filter((row) => entryCustomerId(row.payload) === id).map((row) => db.outbox.delete(row.id)),
+        db.cache.delete(`sheet:${id}`),
+        db.cache.delete(`history:${id}`),
+        db.cache.delete("khata"),
+      ]);
+      await qc.invalidateQueries({ queryKey: ["khata"] });
+      await qc.invalidateQueries({ queryKey: ["sales"] });
+      nav("/", { replace: true });
+    },
     onError: (e) => setErr(e instanceof Error ? e.message : String(e)),
   });
 
@@ -151,6 +168,13 @@ export default function CustomerPage() {
               label={s.archived ? t("unarchive") : t("archive")}
               confirmLabel={t("tapAgainConfirm")}
               onConfirm={() => archive.mutate(!s.archived)}
+            />
+            <ConfirmButton
+              className="btn-secondary text-owed"
+              label={t("deleteCustomer")}
+              confirmLabel={t("deleteCustomerConfirm")}
+              disabled={remove.isPending}
+              onConfirm={() => remove.mutate()}
             />
           </div>
           {s.possible_duplicate_of && (

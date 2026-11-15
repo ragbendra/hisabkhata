@@ -162,6 +162,8 @@ export const ne: Messages = {
   archived: "अभिलेखमा राखिएको",
   archive: "अभिलेखमा राख्नुहोस्",
   unarchive: "अभिलेखबाट निकाल्नुहोस्",
+  deleteCustomer: "ग्राहक र सबै प्रविष्टि मेटाउनुहोस्",
+  deleteCustomerConfirm: "सधैंका लागि मेटाउन फेरि थिच्नुहोस्",
   merge: "गाभ्नुहोस्",
   mergeHelp: "{{name}} का सबै प्रविष्टि अर्को ग्राहकमा सार्नुहोस्। केही पनि मेटिँदैन।",
   mergeConfirm: "{{from}} लाई {{to}} मा गाभ्नुहोस्। जम्मा बाँकी: {{balance}}।",
