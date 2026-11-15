@@ -11,7 +11,7 @@ export function LangToggle() {
   const ne = i18n.language === "ne";
   const on = "bg-brand text-onaccent";
   return (
-    <div className="flex h-10 gap-0.5 rounded-full p-[3px] ring-1 ring-line" role="group" aria-label="Language">
+    <div className="shrink-0 flex h-10 gap-0.5 rounded-full p-[3px] ring-1 ring-line" role="group" aria-label="Language">
       <button
         className={`min-w-[40px] rounded-full text-[13px] font-semibold ${!ne ? on : "text-muted"}`}
         aria-pressed={!ne}
@@ -37,7 +37,7 @@ export function ThemeToggle() {
   const night = theme === "dark";
   return (
     <button
-      className="flex h-11 w-11 items-center justify-center rounded-full ring-1 ring-line"
+      className="shrink-0 flex h-11 w-11 items-center justify-center rounded-full ring-1 ring-line"
       aria-label={night ? t("themeToDay") : t("themeToNight")}
       onClick={() => setTheme(night ? "light" : "dark")}
     >
@@ -61,13 +61,16 @@ export default function Layout() {
   return (
     <div className="mx-auto flex min-h-screen max-w-xl flex-col">
       <header className="sticky top-0 z-30 flex items-center justify-between gap-2 bg-bg px-5 pb-2 pt-[calc(1rem+env(safe-area-inset-top))]">
-        <Link to="/" className="min-h-touch flex-1 truncate py-2 font-serif text-xl font-semibold tracking-tight">
-          {me.shop.name}
+        <Link to="/" className="min-h-touch min-w-0 flex-1 py-1">
+          <span className="block break-words font-serif text-lg font-semibold leading-tight tracking-tight">
+            {t("appName")}: {t("tagline")}
+          </span>
+          <span className="block break-words text-xs font-medium leading-tight text-muted">{me.shop.name}</span>
         </Link>
         <LangToggle />
         <ThemeToggle />
         {me.role === "owner" && (
-          <Link to="/settings" className="flex h-11 w-11 items-center justify-center rounded-full" aria-label={t("settings")}>
+          <Link to="/settings" className="shrink-0 flex h-11 w-11 items-center justify-center rounded-full" aria-label={t("settings")}>
             <IconSliders size={22} />
           </Link>
         )}

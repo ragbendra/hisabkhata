@@ -4,7 +4,6 @@ Run once against the production database after deploying:
     python -m app.cli create-demo --yes
 """
 
-import sys
 from decimal import Decimal
 
 from sqlalchemy import select
@@ -23,7 +22,8 @@ def create_demo() -> None:
     """Create an independent tenant; never touch an existing shop or its data."""
     with SessionLocal() as db:
         if db.scalar(select(User).where(User.login == DEMO_LOGIN)):
-            sys.exit("The demo login already exists; no changes made.")
+            print("The demo login already exists; no changes made.")
+            return
 
         shop = Shop(name="Hisab Demo Fruit Traders", next_bill_no=104)
         db.add(shop)
