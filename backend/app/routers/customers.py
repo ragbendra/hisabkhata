@@ -6,8 +6,8 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select, update
-from sqlalchemy.orm import Session
+from sqlalchemy import select, update
+from sqlalchemy.orm import Session, selectinload
 
 from ..db import get_db
 from ..deps import current_user, owner_only
@@ -17,6 +17,8 @@ from ..ledger import (
     bulk_state,
     history,
     money,
+    payment_snapshot,
+    sale_snapshot,
     state_for,
     still_owed,
 )
@@ -220,31 +222,6 @@ def archive_customer(
     return {"id": str(c.id), "archived": body.archived}
 
 
-@router.delete("/{customer_id}")
-def delete_customer(customer_id: UUID, user: User = Depends(owner_only), db: Session = Depends(get_db)):
-    """Permanently remove a customer and every entry belonging to them."""
-    c = get_customer(db, user, customer_id)
-    deleted = {
-        "name": c.name,
-        "openings": db.scalar(select(func.count()).select_from(Opening).where(Opening.customer_id == c.id)),
-        "sales": db.scalar(select(func.count()).select_from(Sale).where(Sale.customer_id == c.id)),
-        "payments": db.scalar(select(func.count()).select_from(Payment).where(Payment.customer_id == c.id)),
-    }
-    # A sale owns its lines, so deleting the sale removes its fruit lines as well.
-    for sale in db.scalars(select(Sale).where(Sale.customer_id == c.id)):
-        db.delete(sale)
-    for payment in db.scalars(select(Payment).where(Payment.customer_id == c.id)):
-        db.delete(payment)
-    for opening in db.scalars(select(Opening).where(Opening.customer_id == c.id)):
-        db.delete(opening)
-    for other in db.scalars(select(Customer).where(Customer.possible_duplicate_of == c.id)):
-        other.possible_duplicate_of = None
-    db.delete(c)
-    audit(db, user.shop_id, "customer", customer_id, "delete", deleted, None, user.id)
-    db.commit()
-    return {"id": str(customer_id), "deleted": True}
-
-
 class MergeIn(BaseModel):
     into_id: UUID
 
@@ -292,6 +269,52 @@ def merge_customer(
     )
     db.commit()
     return get_sheet(dst.id, user, db)
+
+
+@router.delete("/{customer_id}")
+def delete_customer(
+    customer_id: UUID,
+    confirm_name: str = Query(..., description="The customer's name, typed again to confirm"),
+    user: User = Depends(owner_only),
+    db: Session = Depends(get_db),
+):
+    """Deletes the customer and their whole khata. A full copy goes to the audit log first."""
+    c = get_customer(db, user, customer_id)
+    if norm(confirm_name) != norm(c.name):
+        raise HTTPException(400, "The name does not match")
+
+    openings = list(db.scalars(select(Opening).where(Opening.customer_id == c.id)))
+    sales = list(db.scalars(select(Sale).options(selectinload(Sale.lines)).where(Sale.customer_id == c.id)))
+    pays = list(db.scalars(select(Payment).where(Payment.customer_id == c.id)))
+    # customers that were merged into this one earlier are empty shells: they go with it
+    shells = list(db.scalars(select(Customer).where(Customer.shop_id == user.shop_id, Customer.merged_into_id == c.id)))
+    balance = state_for(db, user.shop_id, c.id).balance
+
+    audit(
+        db,
+        user.shop_id,
+        "customer",
+        c.id,
+        "delete",
+        {
+            **snapshot(c, openings[0] if openings else None),
+            "balance": money(balance),
+            "openings": [{"amount": money(o.amount), "as_of_date": o.as_of_date.isoformat()} for o in openings],
+            "sales": [sale_snapshot(x) for x in sales],
+            "payments": [payment_snapshot(x) for x in pays],
+            "merged_shells": [x.name for x in shells],
+        },
+        None,
+        user.id,
+    )
+    for x in sales + pays + openings + shells:
+        db.delete(x)
+    for other in db.scalars(select(Customer).where(Customer.possible_duplicate_of == c.id)):
+        other.possible_duplicate_of = None
+    db.flush()
+    db.delete(c)
+    db.commit()
+    return {"deleted": str(customer_id), "sales": len(sales), "payments": len(pays), "balance": money(balance)}
 
 
 @router.post("/{customer_id}/dismiss-duplicate")

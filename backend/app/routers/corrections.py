@@ -1,4 +1,4 @@
-"""Edit and void sales and payments (FR-12, FR-28, FR-29). Voided rows stay in the database."""
+"""Edit and delete sales and payments (FR-12, FR-28, FR-29). Every delete is written to the audit log first."""
 
 from datetime import date, timedelta
 from decimal import Decimal
@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from ..db import get_db
 from ..deps import current_user, owner_only
-from ..ledger import audit, line_amount, money, payment_snapshot, sale_snapshot, state_for
+from ..ledger import audit, line_amount, money, paired_payment, payment_snapshot, sale_snapshot, state_for
 from ..models import Customer, Payment, Sale, SaleLine, User
 from ..routers.entries import LineIn, Mode, remember_fruit
 from ..timeutil import at_npl, aware, utcnow
@@ -20,11 +20,6 @@ from ..timeutil import at_npl, aware, utcnow
 router = APIRouter(tags=["corrections"])
 
 UNDO_WINDOW = timedelta(minutes=10)
-
-
-class VoidIn(BaseModel):
-    reason: str | None = Field(default=None, max_length=300)
-    undo: bool = False
 
 
 def _load_sale(db: Session, user: User, sale_id: UUID) -> Sale:
@@ -41,7 +36,7 @@ def _load_payment(db: Session, user: User, payment_id: UUID) -> Payment:
     return p
 
 
-def _can_void(user: User, obj) -> bool:
+def _can_delete(user: User, obj) -> bool:
     if user.role == "owner":
         return True
     # FR-12: the person who made the entry may undo it for 10 minutes
@@ -67,7 +62,7 @@ class SalePatch(BaseModel):
 def edit_sale(sale_id: UUID, body: SalePatch, user: User = Depends(owner_only), db: Session = Depends(get_db)):
     s = _load_sale(db, user, sale_id)
     if s.voided_at is not None:
-        raise HTTPException(400, "A voided sale cannot be edited")
+        raise HTTPException(400, "A cancelled sale cannot be edited")
     before = sale_snapshot(s)
     fields = body.model_fields_set
     if "bill_no" in fields:
@@ -76,7 +71,7 @@ def edit_sale(sale_id: UUID, body: SalePatch, user: User = Depends(owner_only), 
         s.bill_date = body.bill_date
     if body.lines is not None:
         if not body.lines:
-            raise HTTPException(422, "A sale needs at least one fruit line (void it instead)")
+            raise HTTPException(422, "A sale needs at least one fruit line (delete it instead)")
         new_lines = []
         for i, ln in enumerate(body.lines):
             new_lines.append(
@@ -99,20 +94,29 @@ def edit_sale(sale_id: UUID, body: SalePatch, user: User = Depends(owner_only), 
     return {"sale": sale_snapshot(s), "customer_balance": balance}
 
 
-@router.post("/sales/{sale_id}/void")
-def void_sale(sale_id: UUID, body: VoidIn | None = None, user: User = Depends(current_user), db: Session = Depends(get_db)):
-    body = body or VoidIn()
+@router.delete("/sales/{sale_id}")
+def delete_sale(
+    sale_id: UUID,
+    with_payment: bool = True,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+):
+    """Deletes the bill. The money received with it at the counter goes too, unless with_payment=false."""
     s = _load_sale(db, user, sale_id)
-    if not _can_void(user, s):
-        raise HTTPException(403, "Only the owner can void this entry")
-    if s.voided_at is None:
-        before = sale_snapshot(s)
-        s.voided_at = utcnow()
-        s.void_reason = body.reason
-        audit(db, user.shop_id, "sale", s.id, "undo" if body.undo else "void", before, sale_snapshot(s), user.id)
-    balance = _after_change(db, user, s.customer_id)
+    if not _can_delete(user, s):
+        raise HTTPException(403, "Only the owner can delete this entry")
+    deleted = {"sales": [str(s.id)], "payments": []}
+    pay = paired_payment(db, s) if with_payment else None
+    if pay is not None:
+        audit(db, user.shop_id, "payment", pay.id, "delete", payment_snapshot(pay), None, user.id)
+        deleted["payments"].append(str(pay.id))
+        db.delete(pay)
+    audit(db, user.shop_id, "sale", s.id, "delete", sale_snapshot(s), None, user.id)
+    customer_id = s.customer_id
+    db.delete(s)
+    balance = _after_change(db, user, customer_id)
     db.commit()
-    return {"sale": sale_snapshot(s), "customer_balance": balance}
+    return {"deleted": deleted, "customer_balance": balance}
 
 
 class PaymentPatch(BaseModel):
@@ -129,7 +133,7 @@ def edit_payment(
 ):
     p = _load_payment(db, user, payment_id)
     if p.voided_at is not None:
-        raise HTTPException(400, "A voided payment cannot be edited")
+        raise HTTPException(400, "A cancelled payment cannot be edited")
     before = payment_snapshot(p)
     fields = body.model_fields_set
     if body.amount is not None:
@@ -149,19 +153,14 @@ def edit_payment(
     return {"payment": payment_snapshot(p), "customer_balance": balance}
 
 
-@router.post("/payments/{payment_id}/void")
-def void_payment(
-    payment_id: UUID, body: VoidIn | None = None, user: User = Depends(current_user), db: Session = Depends(get_db)
-):
-    body = body or VoidIn()
+@router.delete("/payments/{payment_id}")
+def delete_payment(payment_id: UUID, user: User = Depends(current_user), db: Session = Depends(get_db)):
     p = _load_payment(db, user, payment_id)
-    if not _can_void(user, p):
-        raise HTTPException(403, "Only the owner can void this entry")
-    if p.voided_at is None:
-        before = payment_snapshot(p)
-        p.voided_at = utcnow()
-        p.void_reason = body.reason
-        audit(db, user.shop_id, "payment", p.id, "undo" if body.undo else "void", before, payment_snapshot(p), user.id)
-    balance = _after_change(db, user, p.customer_id)
+    if not _can_delete(user, p):
+        raise HTTPException(403, "Only the owner can delete this entry")
+    audit(db, user.shop_id, "payment", p.id, "delete", payment_snapshot(p), None, user.id)
+    customer_id = p.customer_id
+    db.delete(p)
+    balance = _after_change(db, user, customer_id)
     db.commit()
-    return {"payment": payment_snapshot(p), "customer_balance": balance}
+    return {"deleted": {"sales": [], "payments": [str(payment_id)]}, "customer_balance": balance}

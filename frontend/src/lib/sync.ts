@@ -40,8 +40,8 @@ async function applyResult(res: EntryResult, payload: EntryPayload) {
 
 async function voidSent(res: EntryResult) {
   // The person pressed Undo while the entry was being sent: undo it on the server now.
-  if (res.sale) await api(`/sales/${res.sale.id}/void`, { method: "POST", body: { undo: true } });
-  if (res.payment) await api(`/payments/${res.payment.id}/void`, { method: "POST", body: { undo: true } });
+  if (res.sale) await api(`/sales/${res.sale.id}?with_payment=false`, { method: "DELETE" });
+  if (res.payment) await api(`/payments/${res.payment.id}`, { method: "DELETE" });
 }
 
 /** Sends every waiting entry, oldest first. Sending the same entry twice is safe (the server dedupes by UUID). */
@@ -106,8 +106,8 @@ export async function undoEntry(id: string, ids: { sale?: string; payment?: stri
     return "removed" as const;
   });
   if (outcome !== "sent") return outcome;
-  if (ids.sale) await api(`/sales/${ids.sale}/void`, { method: "POST", body: { undo: true } });
-  if (ids.payment) await api(`/payments/${ids.payment}/void`, { method: "POST", body: { undo: true } });
+  if (ids.sale) await api(`/sales/${ids.sale}?with_payment=false`, { method: "DELETE" });
+  if (ids.payment) await api(`/payments/${ids.payment}`, { method: "DELETE" });
   queryClient.invalidateQueries();
   return "voided";
 }

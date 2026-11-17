@@ -3,14 +3,14 @@ import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import BsDatePicker from "../components/BsDatePicker";
+import { DeleteCustomerButton, DeleteEntryButton } from "../components/EntryActions";
 import Ledger from "../components/Ledger";
 import { IconBack, IconPlus, initial } from "../components/icons";
 import { Balance, ConfirmButton, ErrorBox, Modal, Spinner } from "../components/ui";
 import { api } from "../lib/api";
 import { decimals, lineAmount, nameMatches, norm, normDigits, parseNum, todayNpl } from "../lib/calc";
-import { db } from "../lib/db";
 import { useFmt } from "../lib/format";
-import { entryCustomerId, groupPending } from "../lib/pending";
+import { groupPending } from "../lib/pending";
 import { useCustomers, useHistory, useMe, useSheet } from "../lib/queries";
 import { PAY_MODES, type HistoryEntry, type PayMode, type Sheet } from "../lib/types";
 
@@ -58,22 +58,6 @@ export default function CustomerPage() {
   const archive = useMutation({
     mutationFn: (archived: boolean) => api(`/customers/${id}/archive`, { body: { archived } }),
     onSuccess: invalidate,
-    onError: (e) => setErr(e instanceof Error ? e.message : String(e)),
-  });
-  const remove = useMutation({
-    mutationFn: () => api(`/customers/${id}`, { method: "DELETE" }),
-    onSuccess: async () => {
-      const pending = await db.outbox.toArray();
-      await Promise.all([
-        ...pending.filter((row) => entryCustomerId(row.payload) === id).map((row) => db.outbox.delete(row.id)),
-        db.cache.delete(`sheet:${id}`),
-        db.cache.delete(`history:${id}`),
-        db.cache.delete("khata"),
-      ]);
-      await qc.invalidateQueries({ queryKey: ["khata"] });
-      await qc.invalidateQueries({ queryKey: ["sales"] });
-      nav("/", { replace: true });
-    },
     onError: (e) => setErr(e instanceof Error ? e.message : String(e)),
   });
 
@@ -169,12 +153,9 @@ export default function CustomerPage() {
               confirmLabel={t("tapAgainConfirm")}
               onConfirm={() => archive.mutate(!s.archived)}
             />
-            <ConfirmButton
-              className="btn-secondary text-owed"
-              label={t("deleteCustomer")}
-              confirmLabel={t("deleteCustomerConfirm")}
-              disabled={remove.isPending}
-              onConfirm={() => remove.mutate()}
+            <DeleteCustomerButton
+              customer={{ id: s.id, name: s.name, balance: s.balance }}
+              onDeleted={() => { invalidate(); nav("/"); }}
             />
           </div>
           {s.possible_duplicate_of && (
@@ -249,20 +230,11 @@ function EntryDetail({
   const { t } = useTranslation();
   const f = useFmt();
   const [editing, setEditing] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-  const base = e.type === "sale" ? "/sales" : "/payments";
   // a bill and the money received with it are one line in the ledger, so they share one before/after
   const before = paidWith && paidWith.balance_after === e.balance_before ? paidWith.balance_before : e.balance_before;
   const after = paidWith && paidWith.balance_before === e.balance_after ? paidWith.balance_after : e.balance_after;
 
-  const doVoid = useMutation({
-    mutationFn: () => api(`${base}/${e.id}/void`, { body: {} }),
-    onSuccess: onChanged,
-    onError: (x) => setErr(x instanceof Error ? (x.message === "Network unreachable" ? t("needsConnection") : x.message) : String(x)),
-  });
-
   if (editing) return <EditEntry entry={e} onClose={() => setEditing(false)} onSaved={onChanged} />;
-
   return (
     <Modal title={typeLabel(e, t)} onClose={onClose}>
       <dl className="space-y-2 text-sm">
@@ -321,11 +293,10 @@ function EntryDetail({
         <Stat label={t("enteredBy")} value={`${e.entered_by ?? "?"} · ${f.dateTime(e.entered_at)}`} />
         {e.voided && <p className="font-semibold text-owed">{t("voided")}{e.void_reason ? `: ${e.void_reason}` : ""}</p>}
       </dl>
-      {err && <p role="alert" className="mt-2 text-sm text-owed">{err}</p>}
       {owner && !e.voided && e.type !== "opening" && (
-        <div className="mt-4 flex gap-2">
+        <div className="mt-4 flex flex-wrap gap-2">
           <button className="btn-secondary flex-1" onClick={() => setEditing(true)}>{t("edit")}</button>
-          <ConfirmButton className="btn-secondary flex-1" label={t("void")} confirmLabel={t("tapAgainConfirm")} disabled={doVoid.isPending} onConfirm={() => doVoid.mutate()} />
+          <DeleteEntryButton entry={e} paidWith={e.paid_with ?? undefined} onDone={() => { onChanged(); onClose(); }} />
         </div>
       )}
     </Modal>

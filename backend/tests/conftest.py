@@ -38,6 +38,9 @@ class Api:
     def patch(self, url, json=None, **kw):
         return self.c.patch("/api" + url, json=json, **kw)
 
+    def delete(self, url, **kw):
+        return self.c.delete("/api" + url, **kw)
+
 
 @pytest.fixture(autouse=True)
 def fresh_db():

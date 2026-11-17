@@ -4,7 +4,10 @@ from datetime import timedelta
 from decimal import Decimal
 
 from conftest import Api, entry, uid
+from sqlalchemy import func, select
 
+from app.db import SessionLocal
+from app.models import AuditLog, Sale
 from app.timeutil import today_npl, utcnow
 
 
@@ -72,14 +75,51 @@ def test_overpayment_is_advance(owner):
 
 
 # 4 ----------------------------------------------------------------------------
-def test_void_keeps_row_and_excludes_from_balance(owner):
+def test_delete_entry_removes_row_and_is_audited(owner):
     r = owner.post("/entries", entry(new="V", lines=[("Apple", 10, 100)], received=300)).json()
     cid = r["customer"]["id"]
-    assert owner.post(f"/sales/{r['sale']['id']}/void", {"reason": "mistake"}).status_code == 200
-    assert owner.post(f"/payments/{r['payment']['id']}/void", {}).status_code == 200
+    owner.post("/entries", entry(customer=cid, received=100))  # a later instalment
+    assert bal(owner, cid) == 600
+    # deleting the bill takes the money received with it, but not the later instalment
+    d = owner.delete(f"/sales/{r['sale']['id']}")
+    assert d.status_code == 200 and len(d.json()["deleted"]["payments"]) == 1
     hist = owner.get(f"/customers/{cid}/history").json()
-    assert len(hist) == 2 and all(h["voided"] for h in hist)
-    assert bal(owner, cid) == 0
+    assert [h["type"] for h in hist] == ["payment"] and bal(owner, cid) == -100
+    assert owner.delete(f"/sales/{r['sale']['id']}").status_code == 404
+    # a payment can be deleted on its own
+    assert owner.delete(f"/payments/{hist[0]['id']}").status_code == 200
+    assert owner.get(f"/customers/{cid}/history").json() == [] and bal(owner, cid) == 0
+    with SessionLocal() as db:
+        logs = list(db.scalars(select(AuditLog).where(AuditLog.action == "delete")))
+        assert {x.entity for x in logs} == {"sale", "payment"} and len(logs) == 3
+        sale_log = next(x for x in logs if x.entity == "sale")
+        assert sale_log.before_json["total"] == "1000.00" and sale_log.after_json is None
+
+
+def test_delete_bill_but_keep_its_payment(owner):
+    r = owner.post("/entries", entry(new="K", lines=[("Apple", 10, 100)], received=300)).json()
+    cid = r["customer"]["id"]
+    assert owner.delete(f"/sales/{r['sale']['id']}", params={"with_payment": "false"}).status_code == 200
+    assert [h["type"] for h in owner.get(f"/customers/{cid}/history").json()] == ["payment"]
+
+
+def test_delete_customer_needs_owner_and_typed_name(owner, helper):
+    cid = make_customer(owner, "Gone Traders", lines=("Apple", 10, 100), received=200)
+    owner.post("/entries", entry(customer=cid, received=100))
+    keep = make_customer(owner, "Stays", lines=("Apple", 5, 100))
+    assert helper.delete(f"/customers/{cid}", params={"confirm_name": "Gone Traders"}).status_code == 403
+    assert owner.delete(f"/customers/{cid}", params={"confirm_name": "wrong"}).status_code == 400
+    r = owner.delete(f"/customers/{cid}", params={"confirm_name": "  gone traders "})
+    assert r.status_code == 200 and r.json()["sales"] == 1 and r.json()["payments"] == 2 and r.json()["balance"] == "700.00"
+    assert owner.get(f"/customers/{cid}").status_code == 404
+    names = [c["name"] for c in owner.get("/customers").json()]
+    assert names == ["Stays"] and bal(owner, keep) == 500
+    assert owner.get("/khata").json()["total_to_collect"] == "500.00"
+    with SessionLocal() as db:
+        log = db.scalars(select(AuditLog).where(AuditLog.entity == "customer", AuditLog.action == "delete")).one()
+        assert log.before_json["name"] == "Gone Traders" and len(log.before_json["sales"]) == 1 and len(log.before_json["payments"]) == 2
+        assert db.scalar(select(func.count()).select_from(Sale)) == 1  # only the other customer's bill is left
+
 
 
 # 5 / 6 ------------------------------------------------------------------------
@@ -144,7 +184,7 @@ def test_helper_limits(owner, helper):
     assert helper.post("/entries", entry(customer=cid, received=10,
                                          entry_date=(today_npl() - timedelta(days=2)).isoformat())).status_code == 403
     assert helper.patch(f"/sales/{sale_id}", {"bill_no": "9"}).status_code == 403
-    assert helper.post(f"/sales/{sale_id}/void", {}).status_code == 403  # not theirs, not within undo
+    assert helper.delete(f"/sales/{sale_id}").status_code == 403  # not theirs, not within undo
     other = uid()
     assert helper.post("/customers/%s/merge" % cid, {"into_id": other}).status_code == 403
     assert helper.post(f"/customers/{cid}/archive", {}).status_code == 403
@@ -157,7 +197,7 @@ def test_helper_limits(owner, helper):
 
 def test_helper_can_undo_own_entry_within_window(owner, helper):
     r = helper.post("/entries", entry(new="U", lines=[("Apple", 10, 100)])).json()
-    assert helper.post(f"/sales/{r['sale']['id']}/void", {"undo": True}).status_code == 200
+    assert helper.delete(f"/sales/{r['sale']['id']}").status_code == 200
     assert bal(owner, r["customer"]["id"]) == 0
 
 
@@ -265,8 +305,7 @@ def test_today_card_and_helper_scope(owner, helper):
     helper.post("/entries", entry(customer=ca, lines=[("Apple", 1, 50)], received=50))
     owner.post("/entries", entry(customer=ca, received=20, kind="discount"))
     gone = owner.post("/entries", entry(new="T2", lines=[("Apple", 1, 999)], received=100)).json()
-    owner.post(f"/sales/{gone['sale']['id']}/void", {})  # voided entries are excluded
-    owner.post(f"/payments/{gone['payment']['id']}/void", {})
+    owner.delete(f"/sales/{gone['sale']['id']}")  # deleted entries are gone from the card (the bill takes its payment)
 
     t = owner.get("/khata").json()["today_card"]
     assert t["bills"] == 2 and t["total_sales"] == "1050.00"
@@ -327,8 +366,8 @@ def test_edit_payment(owner):
     r = owner.post("/entries", entry(new="P", lines=[("Apple", 10, 100)], received=100)).json()
     e = owner.patch(f"/payments/{r['payment']['id']}", {"amount": "300", "mode": "bank"})
     assert e.json()["customer_balance"] == "700.00"
-    assert owner.post(f"/payments/{r['payment']['id']}/void", {}).status_code == 200
-    assert owner.patch(f"/payments/{r['payment']['id']}", {"amount": "5"}).status_code == 400
+    assert owner.delete(f"/payments/{r['payment']['id']}").status_code == 200
+    assert owner.patch(f"/payments/{r['payment']['id']}", {"amount": "5"}).status_code == 404
 
 
 def test_bill_numbers(owner):
@@ -362,8 +401,8 @@ def test_export_workbook_matches_app(owner):
     import io
     from openpyxl import load_workbook
     cid = make_customer(owner, "Exp", lines=("Apple", 10, 100), received=250)
-    voided = owner.post("/entries", entry(customer=cid, lines=[("Mango", 1, 50)], received=10)).json()
-    owner.post(f"/sales/{voided['sale']['id']}/void", {})
+    deleted = owner.post("/entries", entry(customer=cid, lines=[("Mango", 1, 50)], received=10)).json()
+    owner.delete(f"/sales/{deleted['sale']['id']}")
     r = owner.get("/export/full")
     assert r.status_code == 200
     assert f"Hisab-{today_npl().isoformat()}.xlsx" in r.headers["content-disposition"]
@@ -371,9 +410,9 @@ def test_export_workbook_matches_app(owner):
     assert wb.sheetnames == ["Balances", "Sales", "Payments"]
     assert wb["Balances"]["A1"].value == "Balances as of"
     rows = {r[0]: r for r in wb["Balances"].iter_rows(min_row=5, values_only=True)}
-    assert Decimal(str(rows["Exp"][2])) == bal(owner, cid) == 740
+    assert Decimal(str(rows["Exp"][2])) == bal(owner, cid) == 750  # the deleted bill is not in the file
     sales = list(wb["Sales"].iter_rows(min_row=2, values_only=True))
-    assert {s[-1] for s in sales} == {"Active", "Voided"}
+    assert [s[-1] for s in sales] == ["Active"]
     assert sales[0][0].startswith("20") and sales[0][1] == today_npl().isoformat()
 
 

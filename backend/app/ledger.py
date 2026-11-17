@@ -225,6 +225,22 @@ BUCKETS = ["0-7", "8-14", "15-30", "30+"]
 
 # ---------------------------------------------------------------- history (FR-16, FR-17)
 
+
+def paired_payment(db: Session, sale: Sale) -> Payment | None:
+    """The money received together with a bill: saved in the same entry (same person, same moment)."""
+    for p in db.scalars(
+        select(Payment).where(
+            Payment.shop_id == sale.shop_id,
+            Payment.customer_id == sale.customer_id,
+            Payment.kind == "payment",
+            Payment.created_by == sale.created_by,
+        )
+    ):
+        if aware(p.created_at) == aware(sale.created_at):
+            return p
+    return None
+
+
 _ORDER = {"opening": 0, "sale": 1, "payment": 2, "discount": 2}
 
 
