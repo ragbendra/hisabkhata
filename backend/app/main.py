@@ -1,8 +1,12 @@
+import logging
 import os
+from contextlib import asynccontextmanager
 from pathlib import Path
 
+from apscheduler.schedulers.background import BackgroundScheduler
 from fastapi import APIRouter, Depends, FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
@@ -10,11 +14,44 @@ from sqlalchemy.orm import Session
 
 from .config import settings
 from .db import get_db
+from .jobs import run_weekly_email
 from .routers import auth, corrections, customers, entries, export, fruit_names, khata, reports
 from .routers import settings as settings_router
 from .routers import users
 
-app = FastAPI(title="Hisab", version="1.0.0")
+log = logging.getLogger("hisab.scheduler")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Starts the weekly-email check inside the app, so no separate cron service is needed.
+
+    The job only sends when the owner's chosen day and time has passed and nothing was sent today
+    (see run_weekly_email), so running it every 15 minutes is safe. Set FK_RUN_SCHEDULER=0 to turn it
+    off, for example when a separate cron job is used instead or on a second instance.
+    """
+    scheduler = None
+    if os.environ.get("FK_RUN_SCHEDULER", "1") != "0":
+        scheduler = BackgroundScheduler(timezone="UTC")
+        scheduler.add_job(
+            run_weekly_email,
+            "interval",
+            minutes=15,
+            id="weekly_email",
+            max_instances=1,  # never two runs at once
+            coalesce=True,  # after a sleep, run once, not once per missed slot
+            misfire_grace_time=3600,
+        )
+        scheduler.start()
+        log.info("Scheduler started: weekly email check every 15 minutes")
+    try:
+        yield
+    finally:
+        if scheduler is not None:
+            scheduler.shutdown(wait=False)
+
+
+app = FastAPI(title="Hisab", version="1.0.0", lifespan=lifespan)
 
 if settings.cors_origins:
     app.add_middleware(
@@ -24,6 +61,8 @@ if settings.cors_origins:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 
 @app.middleware("http")

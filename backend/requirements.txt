@@ -13,3 +13,5 @@ boto3>=1.34
 httpx>=0.27
 pytest>=8.0
 tzdata; sys_platform == 'win32'
+
+apscheduler>=3.11
