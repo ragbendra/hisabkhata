@@ -18,7 +18,7 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session, sessionmaker
 
-from .config import settings
+from .config import normalize_db_url, settings
 from .db import SessionLocal
 from .emailer import send_email
 from .export import build_workbook
@@ -146,7 +146,7 @@ def run_weekly_email(force: bool = False) -> int:
 
 def verify_restore(restored_url: str) -> bool:
     """FR-36: the restore test passes only when every customer balance matches the live system."""
-    other = sessionmaker(bind=create_engine(restored_url))()
+    other = sessionmaker(bind=create_engine(normalize_db_url(restored_url)))()
     mismatches = 0
     with SessionLocal() as live, other as restored:
         for shop in live.scalars(select(Shop)):

@@ -1,4 +1,14 @@
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def normalize_db_url(url: str) -> str:
+    """Name the PostgreSQL driver explicitly. Without it SQLAlchemy 2.1 picks psycopg 3, while this app
+    ships psycopg2, so a plain postgresql:// URL (what Neon and Render hand out) would fail to start."""
+    for prefix in ("postgres://", "postgresql://"):
+        if url.startswith(prefix):
+            return "postgresql+psycopg2://" + url[len(prefix):]
+    return url
 
 
 class Settings(BaseSettings):
@@ -7,6 +17,12 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="FK_", env_file=".env", extra="ignore")
 
     database_url: str = "sqlite:///./dev.db"
+
+    @field_validator("database_url")
+    @classmethod
+    def _driver(cls, v: str) -> str:
+        return normalize_db_url(v)
+
     # Set true in production (HTTPS only).
     cookie_secure: bool = False
     cookie_name: str = "fk_session"
