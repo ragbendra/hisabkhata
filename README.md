@@ -23,10 +23,10 @@ Hisab records every sale with its fruit lines and every payment, and works out e
 - One entry form for a sale, a payment, or both. Fruit lines are kg × rate, with an optional crate count. Fruit names and last rates are remembered.
 - Customers are created from entries. Similar names are suggested, and an exact match asks "use existing or create separate".
 - Customer sheet with the full history in three views (ledger, bills, payments), grouped by BS month, searchable by fruit, bill number or note, with a per-fruit summary.
-- Khata home: total to collect, a "Collect now" list built from collection dates, and a Today card (bills, sales, money received by cash/eSewa/Khalti/bank, per person).
-- Ageing: how long money has been owing, in groups of 0–7, 8–14, 15–30 and over 30 days. Payments are applied to the oldest amounts first, so the figures are labelled estimated.
+- Khata home: total to collect, a Today card (bills, sales, money received by cash/eSewa/Khalti/bank, per person), and the customer list sorted by balance.
+- Ledger-style customer page: debit is what is still to pay, credit is what was paid. A bill with money paid up front shows both on one line.
 - Past entries (owner only): backdate a sale or payment, and add several old bills in a row.
-- Corrections: edit or void a sale or payment, merge or archive a customer. Nothing is hard-deleted.
+- Corrections: edit or delete a bill or payment, merge or archive a customer, or delete a customer's whole khata (owner only, the name must be typed to confirm). Every delete is written to the audit log first, with a full snapshot.
 - Owner and helper logins. A helper can add entries and view customers, and can undo their own entry for 10 minutes. Every entry shows who made it.
 - Entries are saved on the phone first and sent when a connection is available. The half-filled form is kept if the app closes.
 - English and Nepali, Devanagari digits, Bikram Sambat dates with a BS date picker.
@@ -37,7 +37,8 @@ Hisab records every sale with its fruit lines and every payment, and works out e
 
 - **Balances are derived, never stored.** They are summed from openings, sales, payments and discounts, so they cannot drift from the records.
 - **Money is `NUMERIC(14,2)`.** A line is kg × rate rounded half-up to whole rupees. No floating point on the server.
-- **Voids and an audit log instead of deletes.** Voided rows stay and are excluded from balances. Edits, voids and merges are written to `audit_log`.
+- **Deletes are real, and audited first.** Deleting a bill, payment or customer removes the rows, but the old values are written to `audit_log` before the delete. Older voided rows remain and are excluded from balances. Archive and merge keep all history.
+- **Invite-only onboarding.** There is no open self-registration. Access is provisioned via invite links that initialize the shop and trial period, keeping accounts private and managed.
 - **Saves are idempotent.** The phone creates a UUID for each entry and the server accepts it once, so a retry after a bad connection cannot duplicate a sale.
 - **Failed saves stay on the phone.** A refused entry is kept and flagged with Retry and Discard. It is never dropped silently.
 - **BS is displayed, AD is stored.** "Today" and day boundaries follow Nepal time (UTC+05:45).
@@ -100,8 +101,8 @@ For PostgreSQL, create the schema with `alembic upgrade head` instead of `init-d
 ## Tests
 
 - `cd backend && pytest` runs the acceptance tests against SQLite. Set `FK_TEST_DATABASE_URL` to run them on PostgreSQL.
-- Ledger tests cover: kg × rate rounding half-up, three partial payments, overpayment becoming an advance, a void leaving the row and leaving the balance, and a retried save not duplicating.
-- Other tests cover helper permission limits, merge, edits being audited, ageing groups adding up to the total, the Excel export matching the app, the weekly email, the restore balance check, the CSRF guard, password reset and shop isolation.
+- Ledger tests cover: kg × rate rounding half-up, three partial payments, overpayment becoming an advance, a deleted bill or payment changing the balance and leaving an audit snapshot, and a retried save not duplicating.
+- Other tests cover helper permission limits, merge, edits being audited, the Excel export matching the app, the weekly email, the restore balance check, the CSRF guard, password reset and shop isolation. Access tests cover invite and trial flows, expired shops becoming read-only, access extensions, and rate limits.
 - `cd frontend && npm test` checks BS conversion against an independent Python library (AD 2010–2030, BS month lengths 2070–2086), half-up rounding, Devanagari digit input and name suggestions.
 - GitHub Actions runs the backend and frontend checks on every push (`.github/workflows/ci.yml`).
 - There are no browser or end-to-end tests.
@@ -111,9 +112,10 @@ For PostgreSQL, create the schema with `alembic upgrade head` instead of `init-d
 - The app runs as one Docker web service on Render's free plan, with PostgreSQL on Neon's free plan. The root `Dockerfile` builds the frontend and serves it from the API, `render.yaml` describes the service, and `deploy/render-entrypoint.sh` is the container start script.
 - Configuration is by `FK_` environment variables. In production set `FK_DATABASE_URL` and `FK_COOKIE_SECURE=true`.
 - Free-tier behaviour: Render's free web service sleeps after 15 minutes without traffic, so the first request after a pause is slow. Neon's free database also suspends when idle and has a short restore window, so keep your own exports (see below).
-- Render's free plan has no scheduler. The jobs below need an external trigger such as cron or another scheduler:
+- The weekly email check runs inside the app every 15 minutes (APScheduler; set `FK_RUN_SCHEDULER=0` to turn it off). On Render's free plan the service sleeps when idle, so an uptime monitor pinging `/api/health` keeps it awake for the schedule. SMTP is configured with `FK_SMTP_HOST`, `FK_SMTP_PORT`, `FK_SMTP_USER`, `FK_SMTP_PASSWORD` and `FK_SMTP_FROM`.
+- Other jobs need an external trigger such as cron or another scheduler:
   - `python -m app.jobs backup`: daily `pg_dump`, keeps 30 days, copies to S3-compatible storage if configured, emails the owner on failure.
-  - `python -m app.jobs weekly-email`: run every 15 minutes. Sends the Excel file when the owner's chosen day and time arrives.
+  - `python -m app.jobs weekly-email`: the same job as the built-in schedule, for running it by hand or from cron.
   - `python -m app.jobs verify-restore --restored-url <url>`: compares every customer balance between live and a restored copy.
 - A restore was tested once during development, from a dump into a blank PostgreSQL 16 database, and the balance check passed. Repeat it against the production database every few months.
 - `pg_dump` must be installed where the backup job runs.
@@ -124,14 +126,17 @@ For PostgreSQL, create the schema with `alembic upgrade head` instead of `init-d
 - No inventory or stock, no purchase or supplier ledgers, no small consumer buyers. Units are kg only, with crates as a note.
 - Customers do not use the app and it sends them nothing. Reminders and bills are handled outside it.
 - One shop per account. Two physical shops are not separated. Per-person totals on the Today card are the nearest thing.
-- Saving an entry works offline. Editing, voiding, merging and archiving need a connection.
+- Saving an entry works offline. Editing, deleting, merging and archiving need a connection.
+- A deleted customer or entry cannot be restored from the app. The audit log keeps a snapshot, and older Neon backups and weekly emailed copies still contain it.
+- Entries queued offline by a shop whose trial has ended are refused (read-only) and stay on the phone as failed.
+- Subscription renewals are recorded manually. There is no automated online payment gateway.
 - A spoiled-fruit claim can only be handled as a discount. There is no return line.
 - The weekly Excel email holds every balance and is not encrypted.
-- Ageing is an estimate, because payments are not tied to specific bills.
+- A bill and the payment taken with it are separate rows, paired by who saved them and when. Later instalments are not tied to specific bills.
 - BS dates are not checked against an official calendar. The two converters used here disagree for BS 2087 and the npm one ends at BS 2090.
 - Nepali wording has not been reviewed by a native speaker (`frontend/src/locales/ne.ts`).
 - Entry speed, first-load time and iPhone Safari behaviour (installed PWA, storage eviction) have not been measured.
-- There is no sign-up page. The owner creates the shop with the CLI, and the owner adds helper accounts in Settings.
+- There is no open sign-up page. New shops come from an approved invite (or the CLI), and the owner adds helper accounts in Settings.
 
 ## Roadmap
 

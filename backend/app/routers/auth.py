@@ -10,6 +10,7 @@ from ..db import get_db
 from ..deps import current_user
 from ..emailer import send_email
 from ..models import PasswordReset, Shop, User, UserSession
+from ..subscription import shop_state, subscription_payload
 from ..security import hash_password, hash_token, new_token, verify_password
 from ..timeutil import aware, utcnow
 
@@ -38,6 +39,7 @@ def me_payload(user: User, db: Session) -> dict:
         "login": user.login,
         "role": user.role,
         "shop": {"id": str(shop.id), "name": shop.name},
+        "subscription": subscription_payload(shop),
     }
 
 
@@ -46,6 +48,8 @@ def login(body: LoginIn, response: Response, db: Session = Depends(get_db)):
     user = db.scalar(select(User).where(User.login == body.login.strip().lower()))
     if user is None or user.disabled_at is not None or not verify_password(user.password_hash, body.password):
         raise HTTPException(401, "Wrong login or password")
+    if shop_state(db.get(Shop, user.shop_id)) == "suspended":
+        raise HTTPException(403, "This shop is suspended. Please contact Hisab support.")
     token = new_token()
     db.add(
         UserSession(

@@ -90,7 +90,7 @@ One entry form for sales and payments, customers created from entries, a custome
 - FR-45. Tapping a line in the Today card lists the entries behind it.
 - FR-46. Ageing is estimated by applying each customer's payments and discounts to their oldest unpaid amounts first: the opening balance, then bills in date order. The part of an opening balance or bill that is not covered is "still owed", and its age is the number of days since the bill date (or the opening as-of date).
 - FR-47. The customer list shows beside each balance how many days the oldest still-owed amount has been owing. The list can be sorted by balance or by oldest first.
-- FR-48. Khata shows an "Owing for" summary with four groups: up to 7 days, 8 to 30 days, 31 to 60 days, and over 60 days. Each shows the total amount still owed and the number of customers. Tapping a group lists those customers, each with the amount that falls in that group.
+- FR-48. Removed: the "Owing for" summary on Khata. The home screen shows the total to collect, the Today card and the customer list.
 - FR-49. The customer sheet has a "Still owed for" section listing each bill or opening balance with an amount still owed, the amount left and its age.
 - FR-50. Ageing figures are labelled "estimated" because payments are not tied to specific bills. They are calculated when shown and never stored. A customer with an advance has no ageing.
 

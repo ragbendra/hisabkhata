@@ -5,6 +5,7 @@ import { LangToggle } from "../components/Layout";
 import { api } from "../lib/api";
 import { queryClient } from "../lib/queryClient";
 import { flushOutbox } from "../lib/sync";
+import { RequestAccessLink } from "./RequestAccess";
 
 function Shell({ children }: { children: React.ReactNode }) {
   const { t } = useTranslation();
@@ -84,6 +85,7 @@ export default function LoginPage({ offlineNotice }: { offlineNotice?: string })
         <button type="button" className="min-h-touch w-full text-sm text-brand underline" onClick={() => { setForgot(!forgot); setSent(false); setError(null); }}>
           {forgot ? t("backToSignIn") : t("forgotPassword")}
         </button>
+        {!forgot && <RequestAccessLink />}
       </form>
     </Shell>
   );

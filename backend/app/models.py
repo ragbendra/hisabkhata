@@ -64,6 +64,12 @@ class Shop(Base):
     backup_email_day: Mapped[int] = mapped_column(Integer, default=0)  # 0=Sunday .. 6=Saturday
     backup_email_time: Mapped[str] = mapped_column(String(5), default="20:00")  # Nepal time HH:MM
     last_weekly_email_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+    # Subscription (managed from the platform admin page). active | trial | suspended.
+    # access_until is the end of the trial or of the paid period; empty means no limit.
+    status: Mapped[str] = mapped_column(String(10), default="active", server_default="active")
+    access_until: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
+    admin_notes: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    created_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True, default=utcnow)
 
 
 class User(Base):
@@ -206,3 +212,85 @@ class BackupRun(Base):
     finished_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
     ok: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     detail: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+# ---------------------------------------------------------------- platform admin (the person who runs Hisab)
+
+
+class PlatformAdmin(Base):
+    """Separate from `users` on purpose: a shop owner can never become an admin through a role bug."""
+
+    __tablename__ = "platform_admins"
+    id: Mapped[uuid.UUID] = pk()
+    email: Mapped[str] = mapped_column(String(200), unique=True)
+    name: Mapped[str] = mapped_column(String(120))
+    password_hash: Mapped[str] = mapped_column(String(300))
+    totp_secret: Mapped[str | None] = mapped_column(String(64), nullable=True)  # set once two-step sign-in is on
+    totp_pending: Mapped[str | None] = mapped_column(String(64), nullable=True)  # secret shown but not yet confirmed
+    disabled_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
+
+
+class AdminSession(Base):
+    __tablename__ = "admin_sessions"
+    id: Mapped[uuid.UUID] = pk()
+    admin_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("platform_admins.id"), index=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+    expires_at: Mapped[datetime] = mapped_column(UTCDateTime)
+
+
+class PlatformSetting(Base):
+    """Small key/value table so trial length and similar can be changed without a deploy."""
+
+    __tablename__ = "platform_settings"
+    key: Mapped[str] = mapped_column(String(40), primary_key=True)
+    value: Mapped[str] = mapped_column(String(200))
+
+
+class AccessRequest(Base):
+    """Someone asked for access through the public form. Creates no login and no shop."""
+
+    __tablename__ = "access_requests"
+    id: Mapped[uuid.UUID] = pk()
+    shop_name: Mapped[str] = mapped_column(String(200))
+    owner_name: Mapped[str] = mapped_column(String(120))
+    contact: Mapped[str] = mapped_column(String(200))  # phone or email
+    city: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    message: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    status: Mapped[str] = mapped_column(String(10), default="new")  # new | approved | rejected
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+    handled_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
+
+    __table_args__ = (Index("ix_access_requests_status", "status", "created_at"),)
+
+
+class Invite(Base):
+    """One-time link that lets one person create their shop. Only the hash of the token is stored."""
+
+    __tablename__ = "invites"
+    id: Mapped[uuid.UUID] = pk()
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    email: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    shop_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    owner_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    trial_days: Mapped[int] = mapped_column(Integer, default=14)
+    request_id: Mapped[uuid.UUID | None] = mapped_column(UUIDPK, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+    expires_at: Mapped[datetime] = mapped_column(UTCDateTime)
+    used_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
+    shop_id: Mapped[uuid.UUID | None] = mapped_column(UUIDPK, nullable=True)  # the shop it created
+
+
+class SubscriptionPayment(Base):
+    """A fee paid by a shop to the platform, recorded by hand by the admin."""
+
+    __tablename__ = "subscription_payments"
+    id: Mapped[uuid.UUID] = pk()
+    shop_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("shops.id"), index=True)
+    amount: Mapped[Decimal] = mapped_column(Money)
+    mode: Mapped[str] = mapped_column(String(10), default="esewa")  # cash|esewa|khalti|bank|other
+    paid_on: Mapped[date] = mapped_column(Date)
+    extended_to: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
+    note: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)

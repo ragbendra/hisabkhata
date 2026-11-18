@@ -15,7 +15,18 @@ from sqlalchemy.orm import Session
 from .config import settings
 from .db import get_db
 from .jobs import run_weekly_email
-from .routers import auth, corrections, customers, entries, export, fruit_names, khata, reports
+from .routers import (
+    admin,
+    auth,
+    corrections,
+    customers,
+    entries,
+    export,
+    fruit_names,
+    khata,
+    public,
+    reports,
+)
 from .routers import settings as settings_router
 from .routers import users
 
@@ -77,6 +88,7 @@ async def require_app_header(request: Request, call_next):
 api = APIRouter(prefix="/api")
 for module in (
     auth, users, entries, customers, corrections, fruit_names, khata, reports, settings_router, export,
+    admin, public,
 ):
     api.include_router(module.router)
 

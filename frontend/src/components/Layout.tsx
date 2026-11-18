@@ -4,6 +4,7 @@ import { useMe, useOnline } from "../lib/queries";
 import { setLang } from "../lib/i18n";
 import { useTheme } from "../lib/theme";
 import InstallHint from "./InstallHint";
+import SubscriptionBanner from "./SubscriptionBanner";
 import { IconBook, IconMoon, IconPlus, IconReceipt, IconSliders, IconSun } from "./icons";
 
 export function LangToggle() {
@@ -83,6 +84,7 @@ export default function Layout() {
       )}
 
       <main className="pb-nav flex-1 px-5 pt-2">
+        <SubscriptionBanner />
         <Outlet />
       </main>
 

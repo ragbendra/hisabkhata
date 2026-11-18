@@ -1,4 +1,5 @@
-import { Navigate, Route, Routes } from "react-router-dom";
+import { lazy, Suspense } from "react";
+import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import Layout from "./components/Layout";
 import { Spinner } from "./components/ui";
@@ -11,19 +12,36 @@ import SettingsPage from "./pages/Settings";
 import { ApiError } from "./lib/api";
 import { useMe } from "./lib/queries";
 
+const AdminApp = lazy(() => import("./pages/admin/AdminApp"));
+const RequestAccessPage = lazy(() => import("./pages/RequestAccess"));
+const JoinPage = lazy(() => import("./pages/Join"));
+
 export default function App() {
   const me = useMe();
   const { t } = useTranslation();
+  const { pathname } = useLocation();
+
+  if (pathname.startsWith("/admin")) {
+    return (
+      <Suspense fallback={<Spinner />}>
+        <AdminApp />
+      </Suspense>
+    );
+  }
 
   if (me.isLoading && !me.isError) return <Spinner />;
 
   if (!me.data) {
     const unreachable = me.error && !(me.error instanceof ApiError);
     return (
-      <Routes>
-        <Route path="/reset" element={<ResetPage />} />
-        <Route path="*" element={<LoginPage offlineNotice={unreachable ? t("offlineLogin") : undefined} />} />
-      </Routes>
+      <Suspense fallback={<Spinner />}>
+        <Routes>
+          <Route path="/reset" element={<ResetPage />} />
+          <Route path="/request-access" element={<RequestAccessPage />} />
+          <Route path="/join" element={<JoinPage />} />
+          <Route path="*" element={<LoginPage offlineNotice={unreachable ? t("offlineLogin") : undefined} />} />
+        </Routes>
+      </Suspense>
     );
   }
 

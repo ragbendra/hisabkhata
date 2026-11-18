@@ -11,7 +11,7 @@ import sys
 from sqlalchemy import select
 
 from .db import Base, SessionLocal, engine
-from .models import Shop, User
+from .models import PlatformAdmin, Shop, User
 from .security import hash_password
 
 
@@ -35,6 +35,33 @@ def create_shop(name: str, email: str, password: str, owner_name: str | None = N
         print(f"Created shop '{name}' with owner {email}")
 
 
+def create_admin(email: str, name: str, password: str) -> None:
+    """There is exactly one platform admin. A second one cannot be created."""
+    with SessionLocal() as db:
+        if db.scalar(select(PlatformAdmin.id).limit(1)) is not None:
+            sys.exit("A platform admin already exists. Only one is allowed. Use admin-recover if you lost access.")
+        db.add(PlatformAdmin(email=email.strip().lower(), name=name, password_hash=hash_password(password)))
+        db.commit()
+        print(f"Created platform admin {email}. Sign in at /admin")
+
+
+def admin_recover(password: str) -> None:
+    """Lost the password or the phone? Sets a new password, turns two-step sign-in off and signs the admin out."""
+    from .models import AdminSession
+
+    with SessionLocal() as db:
+        admin = db.scalar(select(PlatformAdmin))
+        if admin is None:
+            sys.exit("There is no platform admin yet. Use create-admin.")
+        admin.password_hash = hash_password(password)
+        admin.totp_secret = admin.totp_pending = None
+        admin.disabled_at = None
+        for sess in db.scalars(select(AdminSession).where(AdminSession.admin_id == admin.id)):
+            db.delete(sess)
+        db.commit()
+        print(f"Password reset for {admin.email}; two-step sign-in is off. Turn it on again after signing in.")
+
+
 def main() -> None:
     p = argparse.ArgumentParser(prog="app.cli")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -43,8 +70,12 @@ def main() -> None:
     c.add_argument("--email", required=True)
     c.add_argument("--owner-name")
     c.add_argument("--password")
-    d = sub.add_parser("create-demo", help="create the isolated public demo shop")
-    d.add_argument("--yes", action="store_true", help="required because this writes to the configured database")
+    a = sub.add_parser("create-admin", help="the person who runs Hisab; signs in at /admin")
+    a.add_argument("--email", required=True)
+    a.add_argument("--name", default="Admin")
+    a.add_argument("--password")
+    r = sub.add_parser("admin-recover", help="reset the admin password and turn two-step sign-in off")
+    r.add_argument("--password")
     sub.add_parser("init-db")
     args = p.parse_args()
 
@@ -58,12 +89,16 @@ def main() -> None:
         if len(pw) < 8:
             sys.exit("Password must be at least 8 characters")
         create_shop(args.name, args.email, pw, args.owner_name)
-    elif args.cmd == "create-demo":
-        if not args.yes:
-            sys.exit("Run create-demo with --yes to create the public demo shop.")
-        from .demo import create_demo
-
-        create_demo()
+    elif args.cmd == "admin-recover":
+        pw = args.password or getpass.getpass("New admin password (12+ characters): ")
+        if len(pw) < 12:
+            sys.exit("Admin password must be at least 12 characters")
+        admin_recover(pw)
+    elif args.cmd == "create-admin":
+        pw = args.password or getpass.getpass("Admin password (12+ characters): ")
+        if len(pw) < 12:
+            sys.exit("Admin password must be at least 12 characters")
+        create_admin(args.email, args.name, pw)
 
 
 if __name__ == "__main__":

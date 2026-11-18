@@ -35,6 +35,9 @@ class Api:
     def post(self, url, json=None, **kw):
         return self.c.post("/api" + url, json=json, **kw)
 
+    def put(self, url, json=None, **kw):
+        return self.c.put("/api" + url, json=json, **kw)
+
     def patch(self, url, json=None, **kw):
         return self.c.patch("/api" + url, json=json, **kw)
 
@@ -44,6 +47,9 @@ class Api:
 
 @pytest.fixture(autouse=True)
 def fresh_db():
+    from app.ratelimit import limiter
+
+    limiter.reset()
     Base.metadata.drop_all(engine)
     Base.metadata.create_all(engine)
     with SessionLocal() as db:
