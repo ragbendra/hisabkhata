@@ -28,6 +28,7 @@ export default function KhataPage() {
   }, [customers, q, sort]);
 
   if (khata.isLoading) return <Spinner />;
+  const archived = (khata.data as unknown as { archived?: { count: number; owing: string } } | undefined)?.archived;
   if (khata.error && !khata.data) return <ErrorBox error={khata.error} />;
   const k = khata.data!;
   const waiting = outbox.filter((r) => !r.failed);
@@ -52,6 +53,16 @@ export default function KhataPage() {
   return (
     <div className="space-y-1">
       <UndoBar />
+
+      {me.role === "owner" && archived && archived.count > 0 && (
+        <Link to="/archived" className="card mb-3 flex items-center justify-between text-sm">
+          <span>
+            {t("archivedLink", { defaultValue: "Archived customers" })} ({f.digits(archived.count)})
+            {parseFloat(archived.owing) > 0 && <span className="muted"> · {f.money(archived.owing)}, {t("notInTotal", { defaultValue: "not in total" })}</span>}
+          </span>
+          <IconChevron />
+        </Link>
+      )}
 
       {/* FR-25, FR-33: entries waiting to be sent */}
       {waiting.length > 0 && (

@@ -121,6 +121,17 @@ def test_delete_customer_needs_owner_and_typed_name(owner, helper):
         assert db.scalar(select(func.count()).select_from(Sale)) == 1  # only the other customer's bill is left
 
 
+def test_pdf_bill_and_statement(owner):
+    r = owner.post("/entries", entry(new="Ramesh Traders", lines=[("Apple", 100, 100), ("Orange", 50, 20)], received=3000, bill_no="1031")).json()
+    cid = r["customer"]["id"]
+    owner.post("/entries", entry(customer=cid, received=2000, mode="esewa"))
+    b = owner.get(f"/sales/{r['sale']['id']}/pdf")
+    assert b.status_code == 200 and b.headers["content-type"] == "application/pdf" and b.content[:5] == b"%PDF-"
+    assert "Bill-1031-Ramesh-Traders.pdf" in b.headers["content-disposition"]
+    s = owner.get(f"/customers/{cid}/statement.pdf")
+    assert s.status_code == 200 and s.content[:5] == b"%PDF-"
+    assert owner.get(f"/sales/{uid()}/pdf").status_code == 404
+
 
 # 5 / 6 ------------------------------------------------------------------------
 def test_total_to_collect_and_collect_now(owner):
@@ -487,3 +498,110 @@ def test_shops_are_isolated(owner):
     assert other.get("/customers").json() == []
     assert other.post("/entries", entry(customer=cid, received=5)).status_code == 404
     assert other.get("/khata").json()["total_to_collect"] == "0.00"
+
+
+def test_archived_customers_are_not_in_total_to_collect(owner):
+    make_customer(owner, "Visible")  # 1,000 owed
+    hidden = make_customer(owner, "Hidden")  # 1,000 owed
+    assert owner.get("/khata").json()["total_to_collect"] == "2000.00"
+    owner.post(f"/customers/{hidden}/archive", {})
+    k = owner.get("/khata").json()
+    assert k["total_to_collect"] == "1000.00" and k["owing_count"] == 1
+    assert k["archived"] == {"count": 1, "owing": "1000.00"}  # still reported, on its own
+
+
+def _new(owner, name, qty=10, received=None):
+    r = owner.post("/entries", entry(new=name, lines=[("Apple", qty, 100)], received=received))
+    assert r.status_code == 200, r.text
+    return r.json()["customer"]["id"]
+
+
+def test_delete_opening_balance_and_bulk_entries(owner, helper):
+    cid = _new(owner, "Old Khata", received=300)  # bill 1,000 with 300 paid at the counter
+    owner.patch(f"/customers/{cid}", {"old_balance": "1500", "old_balance_date": "2026-01-01"})
+    h = owner.get(f"/customers/{cid}/history", params={"order": "asc"}).json()
+    opening = next(e for e in h if e["type"] == "opening")
+    bill = next(e for e in h if e["type"] == "sale")
+    pay = next(e for e in h if e["type"] == "payment")
+    assert bal(owner, cid) == 1500 + 1000 - 300
+
+    assert helper.delete(f"/openings/{opening['id']}").status_code == 403
+    assert helper.post("/entries/bulk-delete", {"sales": [bill["id"]]}).status_code == 403
+    r = owner.delete(f"/openings/{opening['id']}")
+    assert r.status_code == 200 and Decimal(r.json()["customer_balance"]) == 700
+    assert owner.delete(f"/openings/{opening['id']}").status_code == 404
+
+    assert owner.post("/entries/bulk-delete", {}).status_code == 422
+    r = owner.post("/entries/bulk-delete", {"sales": [bill["id"]], "payments": [pay["id"]]})
+    assert r.status_code == 200 and r.json()["deleted"] == {"sales": 1, "payments": 1, "openings": 0}
+    assert bal(owner, cid) == 0
+    assert owner.get(f"/customers/{cid}/history").json() == []
+
+    # one bad id rejects the whole batch: nothing is half-deleted
+    owner.post("/entries", entry(customer=cid, lines=[("Apple", 1, 100)]))
+    only = owner.get(f"/customers/{cid}/history").json()[0]
+    assert owner.post("/entries/bulk-delete", {"sales": [only["id"], uid()]}).status_code == 404
+    assert bal(owner, cid) == 100
+
+    from sqlalchemy import select
+
+    from app.db import SessionLocal
+    from app.models import AuditLog
+
+    with SessionLocal() as db:
+        assert {a.entity for a in db.scalars(select(AuditLog).where(AuditLog.action == "delete"))} >= {"opening", "sale", "payment"}
+
+
+def test_bulk_delete_customers_needs_confirm_and_is_owner_only(owner, helper):
+    ids = [_new(owner, n, qty=1, received=40) for n in ("One", "Two", "Three")]  # each owes 60
+    assert helper.post("/customers/bulk-delete", {"ids": ids[:2], "confirm": "DELETE"}).status_code == 403
+    assert owner.post("/customers/bulk-delete", {"ids": ids[:2], "confirm": "yes"}).status_code == 400
+    assert len(owner.get("/customers").json()) == 3
+    r = owner.post("/customers/bulk-delete", {"ids": ids[:2], "confirm": "DELETE"})
+    assert r.status_code == 200
+    assert r.json() == {"customers": 2, "sales": 2, "payments": 2, "balance": "120.00"}
+    assert [c["name"] for c in owner.get("/customers").json()] == ["Three"]
+    assert owner.get("/khata").json()["total_to_collect"] == "60.00"
+    # an id from nowhere rejects the batch, and nothing is deleted
+    assert owner.post("/customers/bulk-delete", {"ids": [ids[2], uid()], "confirm": "DELETE"}).status_code == 404
+    assert len(owner.get("/customers").json()) == 1
+
+
+def test_shop_profile_and_pdf_exports(owner):
+    r = owner.patch("/settings", {"address": "Main Road, Biratnagar", "phone": "9800000000"})
+    assert r.status_code == 200 and r.json()["address"] == "Main Road, Biratnagar" and r.json()["phone"] == "9800000000"
+
+    cid = make_customer(owner, "Sunrise Fruit Stall")  # one bill of 1,000
+    owner.post("/entries", entry(customer=cid, received=400))
+    full = owner.get(f"/customers/{cid}/statement.pdf")
+    assert full.status_code == 200 and full.headers["content-type"] == "application/pdf" and full.content.startswith(b"%PDF")
+    assert b"hisabkhata-c6nn.onrender.com" in full.content  # the logo links to the app
+
+    h = owner.get(f"/customers/{cid}/history", params={"order": "asc"}).json()
+    pay = next(e for e in h if e["type"] == "payment")
+    sel = owner.post(f"/customers/{cid}/statement.pdf", {"keys": [f"payment:{pay['id']}"]})
+    assert sel.status_code == 200 and sel.content.startswith(b"%PDF") and "selected" in sel.headers["content-disposition"]
+    assert owner.post(f"/customers/{cid}/statement.pdf", {"keys": [f"sale:{uid()}"]}).status_code == 422
+    assert owner.post(f"/customers/{cid}/statement.pdf", {"keys": []}).status_code == 422
+
+    # a long ledger breaks over several pages
+    for _ in range(45):
+        owner.post("/entries", entry(customer=cid, lines=[("Apple", 3, 100), ("Mango", 4, 90), ("Guava", 2, 80)]))
+    long = owner.get(f"/customers/{cid}/statement.pdf").content
+    assert long.count(b"/Type /Page\n") >= 3
+
+    # clearing the address
+    assert owner.patch("/settings", {"address": "  "}).json()["address"] is None
+
+
+def test_new_shop_from_invite_stores_address_and_phone(owner):
+    # covered end to end in test_platform_admin; here only the CLI path
+    from app import cli
+    from app.db import SessionLocal
+    from app.models import Shop
+    from sqlalchemy import select
+
+    cli.create_shop("CLI Shop", "cli@example.com", "clipassword1", "Cli Owner", "Chowk, Itahari", "9811111111")
+    with SessionLocal() as db:
+        s = db.scalar(select(Shop).where(Shop.name == "CLI Shop"))
+        assert (s.address, s.phone) == ("Chowk, Itahari", "9811111111")

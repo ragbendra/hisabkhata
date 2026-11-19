@@ -4,7 +4,8 @@ import { useTranslation } from "react-i18next";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import BsDatePicker from "../components/BsDatePicker";
 import { DeleteCustomerButton, DeleteEntryButton } from "../components/EntryActions";
-import Ledger from "../components/Ledger";
+import LedgerCompact from "../components/LedgerCompact";
+import { StatementPdfButtons } from "../components/PdfActions";
 import { IconBack, IconPlus, initial } from "../components/icons";
 import { Balance, ConfirmButton, ErrorBox, Modal, Spinner } from "../components/ui";
 import { api } from "../lib/api";
@@ -131,7 +132,9 @@ export default function CustomerPage() {
 
       {/* the khata itself: the ledger page opens straight away */}
       <div className="mt-5">
-        <Ledger entries={histQ.data ?? []} loading={histQ.isLoading} focusSale={focusSale} onOpen={setOpen} />
+        <LedgerCompact entries={histQ.data ?? []} loading={histQ.isLoading} focusSale={focusSale}
+                       onOpen={setOpen} canSelect={owner} onChanged={invalidate} customerId={s.id} />
+        <StatementPdfButtons customerId={s.id} />
       </div>
 
       {owner && (

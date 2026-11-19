@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
+import ShopProfileForm from "../components/ShopProfileForm";
 import { ConfirmButton, Section, Spinner } from "../components/ui";
 import { api, apiBlob } from "../lib/api";
 import { setLang } from "../lib/i18n";
@@ -106,6 +107,8 @@ export default function SettingsPage() {
       <Section title={t("shop")}>
         <ShopForm key={`${s.name}-${s.next_bill_no}`} name={s.name} next={s.next_bill_no} onSave={(b) => save.mutate(b)} />
       </Section>
+
+      <ShopProfileForm />
 
       <Section title={t("language")}>
         <div className="flex gap-2">

@@ -26,7 +26,7 @@ export default function JoinPage() {
     enabled: Boolean(token),
     retry: false,
   });
-  const [f, setF] = useState<{ shop_name?: string; owner_name?: string; email?: string; password: string }>({ password: "" });
+  const [f, setF] = useState<{ shop_name?: string; owner_name?: string; email?: string; address: string; phone: string; password: string }>({ address: "", phone: "", password: "" });
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -69,7 +69,7 @@ export default function JoinPage() {
     setBusy(true);
     setErr(null);
     try {
-      await api(`/public/invite/${encodeURIComponent(token)}/accept`, { body: { ...v, password: f.password } });
+      await api(`/public/invite/${encodeURIComponent(token)}/accept`, { body: { ...v, address: f.address, phone: f.phone, password: f.password } });
       await qc.invalidateQueries();
       nav("/", { replace: true });
     } catch (x) {
@@ -87,6 +87,15 @@ export default function JoinPage() {
         <label className="label" htmlFor="j-shop">{t("shopName", { defaultValue: "Shop name" })}</label>
         <input id="j-shop" className="field" value={v.shop_name} onChange={(e) => setF({ ...f, shop_name: e.target.value })} required minLength={2} />
       </div>
+      <div>
+        <label className="label" htmlFor="j-addr">{t("shopAddress", { defaultValue: "Shop address" })}</label>
+        <input id="j-addr" className="field" value={f.address} onChange={(e) => setF({ ...f, address: e.target.value })} required minLength={2} maxLength={300} autoComplete="street-address" />
+      </div>
+      <div>
+        <label className="label" htmlFor="j-phone">{t("shopPhone", { defaultValue: "Shop phone" })}</label>
+        <input id="j-phone" className="field" inputMode="tel" value={f.phone} onChange={(e) => setF({ ...f, phone: e.target.value })} required minLength={5} maxLength={60} autoComplete="tel" />
+      </div>
+      <p className="muted -mt-1 text-xs">{t("shopDetailsPrinted", { defaultValue: "The shop name, address and phone are printed on your PDF bills. You can change them later in Settings." })}</p>
       <div>
         <label className="label" htmlFor="j-name">{t("yourName", { defaultValue: "Your name" })}</label>
         <input id="j-name" className="field" value={v.owner_name} onChange={(e) => setF({ ...f, owner_name: e.target.value })} required minLength={2} autoComplete="name" />

@@ -107,16 +107,18 @@ def test_full_invite_flow_gives_a_14_day_trial(admin):
     assert info["shop_name"] == "Sharma Fruits"
 
     # the invited email cannot be swapped for another one
-    r = anon.post(f"/public/invite/{token}/accept", {"shop_name": "Sharma Fruits", "owner_name": "Hari", "email": "other@example.com", "password": "password123"})
+    r = anon.post(f"/public/invite/{token}/accept", {"shop_name": "Sharma Fruits", "owner_name": "Hari", "email": "other@example.com", "password": "password123", "address": "Main Road, Biratnagar", "phone": "9800000000"})
     assert r.status_code == 201, r.text
     me = r.json()
     assert me["login"] == "hari@example.com" and me["subscription"]["state"] == "trial"
+    assert Api.__name__ and anon.get("/settings").json()["address"] == "Main Road, Biratnagar"
+    assert anon.get("/settings").json()["phone"] == "9800000000"
     assert 13 <= me["subscription"]["days_left"] <= 14
     assert anon.get("/khata").status_code == 200  # signed in straight away
 
     # the link works once
     assert Api().get(f"/public/invite/{token}").status_code == 404
-    assert Api().post(f"/public/invite/{token}/accept", {"shop_name": "X Shop", "owner_name": "Y Z", "email": "z@example.com", "password": "password123"}).status_code == 404
+    assert Api().post(f"/public/invite/{token}/accept", {"shop_name": "X Shop", "owner_name": "Y Z", "email": "z@example.com", "password": "password123", "address": "Main Road, Biratnagar", "phone": "9800000000"}).status_code == 404
 
 
 def test_invite_expiry_revoke_and_duplicate_email(admin, owner):
@@ -137,7 +139,7 @@ def test_invite_expiry_revoke_and_duplicate_email(admin, owner):
     ok = admin.post("/admin/invites", {"send_email": False}).json()
     r = Api().post(
         f"/public/invite/{token_of(ok['link'])}/accept",
-        {"shop_name": "Dup Shop", "owner_name": "Dup", "email": "owner@example.com", "password": "password123"},
+        {"shop_name": "Dup Shop", "owner_name": "Dup", "email": "owner@example.com", "password": "password123", "address": "Main Road, Biratnagar", "phone": "9800000000"},
     )
     assert r.status_code == 409  # that email already has a login
     assert admin.post("/admin/invites", {"email": "owner@example.com"}).status_code == 409
@@ -147,7 +149,7 @@ def test_invite_expiry_revoke_and_duplicate_email(admin, owner):
 def new_trial_shop(admin, email="t@example.com"):
     made = admin.post("/admin/invites", {"send_email": False}).json()
     shop = Api()
-    r = shop.post(f"/public/invite/{token_of(made['link'])}/accept", {"shop_name": "Trial Shop", "owner_name": "T Owner", "email": email, "password": "password123"})
+    r = shop.post(f"/public/invite/{token_of(made['link'])}/accept", {"shop_name": "Trial Shop", "owner_name": "T Owner", "email": email, "password": "password123", "address": "Main Road, Biratnagar", "phone": "9800000000"})
     assert r.status_code == 201, r.text
     return shop, r.json()["shop"]["id"]
 

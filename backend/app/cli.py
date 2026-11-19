@@ -15,11 +15,18 @@ from .models import PlatformAdmin, Shop, User
 from .security import hash_password
 
 
-def create_shop(name: str, email: str, password: str, owner_name: str | None = None) -> None:
+def create_shop(
+    name: str,
+    email: str,
+    password: str,
+    owner_name: str | None = None,
+    address: str | None = None,
+    phone: str | None = None,
+) -> None:
     with SessionLocal() as db:
         if db.scalar(select(User).where(User.login == email.lower())):
             sys.exit("That email already has a login")
-        shop = Shop(name=name)
+        shop = Shop(name=name, address=address, phone=phone)
         db.add(shop)
         db.flush()
         db.add(
@@ -70,6 +77,8 @@ def main() -> None:
     c.add_argument("--email", required=True)
     c.add_argument("--owner-name")
     c.add_argument("--password")
+    c.add_argument("--address")
+    c.add_argument("--phone")
     a = sub.add_parser("create-admin", help="the person who runs Hisab; signs in at /admin")
     a.add_argument("--email", required=True)
     a.add_argument("--name", default="Admin")
@@ -88,7 +97,7 @@ def main() -> None:
         pw = args.password or getpass.getpass("Owner password: ")
         if len(pw) < 8:
             sys.exit("Password must be at least 8 characters")
-        create_shop(args.name, args.email, pw, args.owner_name)
+        create_shop(args.name, args.email, pw, args.owner_name, address=args.address, phone=args.phone)
     elif args.cmd == "admin-recover":
         pw = args.password or getpass.getpass("New admin password (12+ characters): ")
         if len(pw) < 12:

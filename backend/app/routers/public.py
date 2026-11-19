@@ -39,6 +39,8 @@ class AcceptIn(BaseModel):
     owner_name: str = Field(min_length=2, max_length=120)
     email: str = Field(min_length=5, max_length=200)
     password: str = Field(min_length=8, max_length=200)
+    address: str = Field(min_length=2, max_length=300)  # printed on bills and statements
+    phone: str = Field(min_length=5, max_length=60)
 
 
 @router.get("/status")
@@ -111,6 +113,8 @@ def accept_invite(token: str, body: AcceptIn, request: Request, response: Respon
     now = utcnow()
     shop = Shop(
         name=body.shop_name.strip(),
+        address=body.address.strip(),
+        phone=body.phone.strip(),
         status="trial",
         access_until=now + timedelta(days=inv.trial_days),
         created_at=now,

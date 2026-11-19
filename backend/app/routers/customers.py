@@ -271,18 +271,9 @@ def merge_customer(
     return get_sheet(dst.id, user, db)
 
 
-@router.delete("/{customer_id}")
-def delete_customer(
-    customer_id: UUID,
-    confirm_name: str = Query(..., description="The customer's name, typed again to confirm"),
-    user: User = Depends(owner_only),
-    db: Session = Depends(get_db),
-):
-    """Deletes the customer and their whole khata. A full copy goes to the audit log first."""
-    c = get_customer(db, user, customer_id)
-    if norm(confirm_name) != norm(c.name):
-        raise HTTPException(400, "The name does not match")
-
+def erase_customer(db: Session, user: User, c: Customer) -> dict:
+    """Removes the customer and everything under them. A full copy goes to the audit log first.
+    Does not commit: the caller does, so several customers can be removed in one transaction."""
     openings = list(db.scalars(select(Opening).where(Opening.customer_id == c.id)))
     sales = list(db.scalars(select(Sale).options(selectinload(Sale.lines)).where(Sale.customer_id == c.id)))
     pays = list(db.scalars(select(Payment).where(Payment.customer_id == c.id)))
@@ -313,8 +304,44 @@ def delete_customer(
         other.possible_duplicate_of = None
     db.flush()
     db.delete(c)
+    db.flush()
+    return {"deleted": str(c.id), "sales": len(sales), "payments": len(pays), "balance": money(balance)}
+
+
+@router.delete("/{customer_id}")
+def delete_customer(
+    customer_id: UUID,
+    confirm_name: str = Query(..., description="The customer's name, typed again to confirm"),
+    user: User = Depends(owner_only),
+    db: Session = Depends(get_db),
+):
+    """Deletes the customer and their whole khata."""
+    c = get_customer(db, user, customer_id)
+    if norm(confirm_name) != norm(c.name):
+        raise HTTPException(400, "The name does not match")
+    out = erase_customer(db, user, c)
     db.commit()
-    return {"deleted": str(customer_id), "sales": len(sales), "payments": len(pays), "balance": money(balance)}
+    return out
+
+
+class BulkCustomers(BaseModel):
+    ids: list[UUID] = Field(min_length=1, max_length=200)
+    confirm: str  # must be the word DELETE
+
+
+@router.post("/bulk-delete")
+def bulk_delete_customers(body: BulkCustomers, user: User = Depends(owner_only), db: Session = Depends(get_db)):
+    """Deletes several customers, with everything under them, in one go (all or none)."""
+    if body.confirm.strip() != "DELETE":
+        raise HTTPException(400, "Type DELETE to confirm")
+    results = [erase_customer(db, user, get_customer(db, user, cid)) for cid in dict.fromkeys(body.ids)]
+    db.commit()
+    return {
+        "customers": len(results),
+        "sales": sum(r["sales"] for r in results),
+        "payments": sum(r["payments"] for r in results),
+        "balance": money(sum((Decimal(r["balance"]) for r in results), Decimal("0"))),
+    }
 
 
 @router.post("/{customer_id}/dismiss-duplicate")

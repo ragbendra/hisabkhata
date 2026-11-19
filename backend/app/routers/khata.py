@@ -83,8 +83,12 @@ def khata(user: User = Depends(current_user), db: Session = Depends(get_db)):
     by_id = {c.id: c for c in customers}
     rows = {c.id: row(c, states.get(c.id, CustState()), today) for c in customers}
 
-    owing = [c for c in customers if states.get(c.id, CustState()).balance > 0]
+    # Archived customers are hidden from the Khata list, so what they owe is not part of "total to collect".
+    # It is reported on its own so it can be reviewed or deleted from the Archived screen.
+    owing = [c for c in customers if c.archived_at is None and states.get(c.id, CustState()).balance > 0]
     total = sum((states[c.id].balance for c in owing), ZERO)
+    archived_all = [c for c in customers if c.archived_at is not None]
+    archived_owing = sum((max(states.get(c.id, CustState()).balance, ZERO) for c in archived_all), ZERO)
 
     def brief(c: Customer) -> dict:
         r = rows[c.id]
@@ -141,6 +145,7 @@ def khata(user: User = Depends(current_user), db: Session = Depends(get_db)):
         "today": today.isoformat(),
         "total_to_collect": money(total),
         "owing_count": len(owing),
+        "archived": {"count": len(archived_all), "owing": money(archived_owing)},
         "today_card": today_card(db, user, today),
         "collect_now": collect_now,
         "coming_up": coming_up,

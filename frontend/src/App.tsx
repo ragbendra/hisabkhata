@@ -15,6 +15,7 @@ import { useMe } from "./lib/queries";
 const AdminApp = lazy(() => import("./pages/admin/AdminApp"));
 const RequestAccessPage = lazy(() => import("./pages/RequestAccess"));
 const JoinPage = lazy(() => import("./pages/Join"));
+const ArchivedPage = lazy(() => import("./pages/Archived"));
 
 export default function App() {
   const me = useMe();
@@ -47,15 +48,18 @@ export default function App() {
 
   const owner = me.data.role === "owner";
   return (
-    <Routes>
-      <Route element={<Layout />}>
-        <Route path="/" element={<KhataPage />} />
-        <Route path="/entry" element={<NewEntryPage />} />
-        <Route path="/customer/:id" element={<CustomerPage />} />
-        <Route path="/sales" element={<SalesPage />} />
-        <Route path="/settings" element={owner ? <SettingsPage /> : <Navigate to="/" replace />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Route>
-    </Routes>
+    <Suspense fallback={<Spinner />}>
+      <Routes>
+        <Route element={<Layout />}>
+          <Route path="/" element={<KhataPage />} />
+          <Route path="/entry" element={<NewEntryPage />} />
+          <Route path="/customer/:id" element={<CustomerPage />} />
+          <Route path="/sales" element={<SalesPage />} />
+          <Route path="/archived" element={owner ? <ArchivedPage /> : <Navigate to="/" replace />} />
+          <Route path="/settings" element={owner ? <SettingsPage /> : <Navigate to="/" replace />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Route>
+      </Routes>
+    </Suspense>
   );
 }

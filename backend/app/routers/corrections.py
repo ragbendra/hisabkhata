@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session, selectinload
 from ..db import get_db
 from ..deps import current_user, owner_only
 from ..ledger import audit, line_amount, money, paired_payment, payment_snapshot, sale_snapshot, state_for
-from ..models import Customer, Payment, Sale, SaleLine, User
+from ..models import Customer, Opening, Payment, Sale, SaleLine, User
 from ..routers.entries import LineIn, Mode, remember_fruit
 from ..timeutil import at_npl, aware, utcnow
 
@@ -164,3 +164,69 @@ def delete_payment(payment_id: UUID, user: User = Depends(current_user), db: Ses
     balance = _after_change(db, user, customer_id)
     db.commit()
     return {"deleted": {"sales": [], "payments": [str(payment_id)]}, "customer_balance": balance}
+
+
+def _opening_snapshot(o: Opening) -> dict:
+    return {
+        "id": str(o.id),
+        "customer_id": str(o.customer_id),
+        "amount": money(o.amount),
+        "as_of_date": o.as_of_date.isoformat(),
+    }
+
+
+def _load_opening(db: Session, user: User, opening_id: UUID) -> Opening:
+    o = db.get(Opening, opening_id)
+    cust = db.get(Customer, o.customer_id) if o else None
+    if o is None or cust is None or cust.shop_id != user.shop_id:
+        raise HTTPException(404, "Opening balance not found")
+    return o
+
+
+@router.delete("/openings/{opening_id}")
+def delete_opening(opening_id: UUID, user: User = Depends(owner_only), db: Session = Depends(get_db)):
+    """Removes an old-khata opening balance (the amount a customer already owed when the app started)."""
+    o = _load_opening(db, user, opening_id)
+    audit(db, user.shop_id, "opening", o.id, "delete", _opening_snapshot(o), None, user.id)
+    customer_id = o.customer_id
+    db.delete(o)
+    balance = _after_change(db, user, customer_id)
+    db.commit()
+    return {"deleted": {"openings": [str(opening_id)]}, "customer_balance": balance}
+
+
+class BulkEntries(BaseModel):
+    sales: list[UUID] = Field(default_factory=list, max_length=500)
+    payments: list[UUID] = Field(default_factory=list, max_length=500)
+    openings: list[UUID] = Field(default_factory=list, max_length=500)
+
+
+@router.post("/entries/bulk-delete")
+def bulk_delete_entries(body: BulkEntries, user: User = Depends(owner_only), db: Session = Depends(get_db)):
+    """Deletes the selected bills, payments and opening balances in one go (all or none).
+    A bill's own payment is deleted only when it is selected too."""
+    if not (body.sales or body.payments or body.openings):
+        raise HTTPException(422, "Nothing selected")
+    touched: set = set()
+    for sid in dict.fromkeys(body.sales):
+        s = _load_sale(db, user, sid)
+        audit(db, user.shop_id, "sale", s.id, "delete", sale_snapshot(s), None, user.id)
+        touched.add(s.customer_id)
+        db.delete(s)
+    for pid in dict.fromkeys(body.payments):
+        p = _load_payment(db, user, pid)
+        audit(db, user.shop_id, "payment", p.id, "delete", payment_snapshot(p), None, user.id)
+        touched.add(p.customer_id)
+        db.delete(p)
+    for oid in dict.fromkeys(body.openings):
+        o = _load_opening(db, user, oid)
+        audit(db, user.shop_id, "opening", o.id, "delete", _opening_snapshot(o), None, user.id)
+        touched.add(o.customer_id)
+        db.delete(o)
+    db.flush()
+    balances = {str(cid): _after_change(db, user, cid) for cid in touched}
+    db.commit()
+    return {
+        "deleted": {"sales": len(set(body.sales)), "payments": len(set(body.payments)), "openings": len(set(body.openings))},
+        "balances": balances,
+    }

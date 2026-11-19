@@ -29,7 +29,8 @@ class Settings(BaseSettings):
     session_days: int = 30
     reset_minutes: int = 60
     # Printed under the shop name on PDF bills, e.g. "Main Road, Biratnagar · Ph 98XXXXXXXX · PAN 123456789".
-    bill_address: str = ""
+    bill_address: str = ""  # fallback only
+    brand_url: str = "https://hisabkhata-c6nn.onrender.com"
     # Used in password-reset links.
     app_base_url: str = "http://localhost:5173"
     # Platform admin (the person who runs Hisab). The admin page is at /admin.

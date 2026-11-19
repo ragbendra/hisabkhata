@@ -60,6 +60,8 @@ class Shop(Base):
     __tablename__ = "shops"
     id: Mapped[uuid.UUID] = pk()
     name: Mapped[str] = mapped_column(String(200))
+    address: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    phone: Mapped[str | None] = mapped_column(String(60), nullable=True)
     next_bill_no: Mapped[int] = mapped_column(Integer, default=1)
     backup_email_day: Mapped[int] = mapped_column(Integer, default=0)  # 0=Sunday .. 6=Saturday
     backup_email_time: Mapped[str] = mapped_column(String(5), default="20:00")  # Nepal time HH:MM
