@@ -94,9 +94,11 @@ export default function LedgerCompact({
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  const newest = useMemo(() => buildRows(entries).reverse(), [entries]);
-  const recent = newest.slice(0, RECENT);
-  const older = newest.slice(RECENT);
+  // oldest first: folded months at the top, the latest RECENT lines at the bottom
+  const rows = useMemo(() => buildRows(entries), [entries]);
+  const split = Math.max(rows.length - RECENT, 0);
+  const older = rows.slice(0, split);
+  const recent = rows.slice(split);
 
   const months = useMemo(() => {
     const groups: { key: string; label: string; rows: Row[]; debit: number; credit: number }[] = [];
@@ -117,7 +119,7 @@ export default function LedgerCompact({
   }, [older]);
 
   const keysOf = (rows: Row[]) => rows.flatMap(rowKeys);
-  const allKeys = useMemo(() => keysOf(newest), [newest]);
+  const allKeys = useMemo(() => keysOf(rows), [rows]);
   const toggleRows = (rows: Row[]) => {
     const ks = keysOf(rows);
     setPicked((p) => {
@@ -253,7 +255,6 @@ export default function LedgerCompact({
               </tr>
             </thead>
             <tbody>
-              {recent.map(line)}
               {months.map((g) => (
                 <MonthRows
                   key={g.key}
@@ -278,12 +279,13 @@ export default function LedgerCompact({
                   {g.rows.map(line)}
                 </MonthRows>
               ))}
+              {recent.map(line)}
             </tbody>
           </table>
         </div>
       </div>
 
-      {!loading && newest.length === 0 && <p className="muted mt-3">{t("noEntries")}</p>}
+      {!loading && rows.length === 0 && <p className="muted mt-3">{t("noEntries")}</p>}
       <p className="muted mt-2 text-xs">{t("ledgerUnit")}</p>
 
       {selecting && count > 0 && (
