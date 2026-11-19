@@ -18,6 +18,7 @@ from .jobs import run_weekly_email
 from .routers import (
     admin,
     auth,
+    bills,
     corrections,
     customers,
     entries,
@@ -87,8 +88,7 @@ async def require_app_header(request: Request, call_next):
 
 api = APIRouter(prefix="/api")
 for module in (
-    auth, users, entries, customers, corrections, fruit_names, khata, reports, settings_router, export,
-    admin, public,
+    auth, users, entries, customers, corrections, fruit_names, khata, reports, settings_router, export, bills, admin, public,
 ):
     api.include_router(module.router)
 
