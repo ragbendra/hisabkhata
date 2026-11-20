@@ -178,7 +178,7 @@ def _brand_badge(c) -> None:
     c.linkURL(settings.brand_url, (x_logo, top - size - 4 * mm, right, top), relative=0)
 
 
-def _make_canvas(running_title: str, footer_note: str, printed_on: date):
+def _make_canvas(running_title: str, footer_note: str, printed_on: date, date_system: str = "bs"):
     """A canvas that knows the page count, so every page can say 'Page x of y'."""
 
     class Numbered(rl_canvas.Canvas):
@@ -222,7 +222,7 @@ def _make_canvas(running_title: str, footer_note: str, printed_on: date):
             c.line(MARGIN, 14 * mm, W - MARGIN, 14 * mm)
             c.setFont("Helvetica", 7.5)
             c.setFillColor(MUTED)
-            c.drawString(MARGIN, 10 * mm, f"Generated on {bs_text(printed_on)} BS ({ad_text(printed_on)}) by Hisab. {footer_note}")
+            c.drawString(MARGIN, 10 * mm, (f"Generated on {ad_text(printed_on)} by Hisab. {footer_note}" if date_system == "ad" else f"Generated on {bs_text(printed_on)} BS ({ad_text(printed_on)}) by Hisab. {footer_note}"))
             c.drawRightString(W - MARGIN, 10 * mm, f"Page {page} of {total}")
             host = _brand_host()
             c.setFillColor(PINE)
@@ -309,7 +309,13 @@ def _doc(buf, title: str, shop_name: str) -> SimpleDocTemplate:
     )
 
 
-def _date_cell(d: date) -> list:
+def _date_cell(d: date, date_system: str = "bs") -> list:
+    if date_system == "ad":
+        return [
+            Paragraph(f"<b>{d.day}</b>", _style("dd", fontSize=12, leading=14, alignment=TA_CENTER)),
+            Paragraph(d.strftime("%b"), _style("dm", fontSize=8, leading=10, textColor=MUTED, alignment=TA_CENTER)),
+            Paragraph(str(d.year), _style("dy", fontSize=8, leading=10, textColor=MUTED, alignment=TA_CENTER)),
+        ]
     y, m, day = to_bs(d)
     return [
         Paragraph(f"<b>{day}</b>", _style("dd", fontSize=12, leading=14, alignment=TA_CENTER)),
@@ -345,6 +351,7 @@ def build_bill(
     balance_before: Decimal,
     balance_after: Decimal,
     printed_on: date | None = None,
+    date_system: str = "bs",
 ) -> bytes:
     printed_on = printed_on or bill_date
     buf = io.BytesIO()
@@ -353,9 +360,9 @@ def build_bill(
 
     meta = Table(
         [
-            [Paragraph("BILL NO.", S_LABEL), Paragraph("DATE (BS)", S_LABEL)],
+            [Paragraph("BILL NO.", S_LABEL), Paragraph("DATE" if date_system == "ad" else "DATE (BS)", S_LABEL)],
             [Paragraph(f"<b>{latin('#' + bill_no) if bill_no else '-'}</b>", _style("bn", fontSize=13, leading=16)),
-             Paragraph(f"<b>{bs_text(bill_date)}</b><br/><font color='#6B6A63' size='8'>{ad_text(bill_date)}</font>", _style("bd", fontSize=11, leading=14))],
+             Paragraph(f"<b>{ad_text(bill_date)}</b>", _style("bd", fontSize=11, leading=14)) if date_system == "ad" else Paragraph(f"<b>{bs_text(bill_date)}</b><br/><font color='#6B6A63' size='8'>{ad_text(bill_date)}</font>", _style("bd", fontSize=11, leading=14))],
         ],
         colWidths=[28 * mm, 45 * mm],
     )
@@ -415,7 +422,7 @@ def build_bill(
     sig.setStyle(TableStyle([("LINEABOVE", (0, 0), (0, 0), 0.6, MUTED), ("LINEABOVE", (1, 0), (1, 0), 0.6, MUTED), ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0)]))
     story.append(KeepTogether([sig, Spacer(1, 6 * mm), Paragraph("Thank you for your business.", _style("ty", fontSize=9, leading=12, textColor=PINE, fontName="Helvetica-Bold", alignment=TA_CENTER))]))
 
-    doc.build(story, canvasmaker=_make_canvas(latin_plain(f"{shop_name} · Bill {bill_no or ''}".strip()), "Computer generated bill.", printed_on))
+    doc.build(story, canvasmaker=_make_canvas(latin_plain(f"{shop_name} · Bill {bill_no or ''}".strip()), "Computer generated bill.", printed_on, date_system))
     return buf.getvalue()
 
 
@@ -432,13 +439,14 @@ def build_statement(
     closing: Decimal,
     printed_on: date,
     selection: tuple[int, int] | None = None,
+    date_system: str = "bs",
 ) -> bytes:
     """rows: date, head, tag, items, debit, credit, balance (ledger order, oldest first).
     selection=(shown, all): the statement lists only some entries; balances are still the real running balances."""
     buf = io.BytesIO()
     doc = _doc(buf, f"Statement {customer['name']}", shop_name)
     story = _shop_block(shop_name, address, phone)
-    story.append(_title_row("STATEMENT OF ACCOUNT", f"As on {bs_text(printed_on)} BS"))
+    story.append(_title_row("STATEMENT OF ACCOUNT", (f"As on {ad_text(printed_on)}" if date_system == "ad" else f"As on {bs_text(printed_on)} BS")))
     story.append(Spacer(1, 2 * mm))
 
     owes = closing > 0
@@ -468,7 +476,7 @@ def build_statement(
         bal = r["balance"]
         data.append(
             [
-                _date_cell(r["date"]),
+                _date_cell(r["date"], date_system),
                 part,
                 _num(r["debit"], OWED),
                 _num(r["credit"], RECV),
@@ -497,5 +505,5 @@ def build_statement(
     story.append(Spacer(1, 3 * mm))
     story.append(Paragraph("Debit: still to be paid. Credit: paid. Balance: total left to pay after that line. Amounts in Rs.", S_SMALL))
 
-    doc.build(story, canvasmaker=_make_canvas(latin_plain(f"{shop_name} · Statement · {customer['name']}"), "Computer generated statement.", printed_on))
+    doc.build(story, canvasmaker=_make_canvas(latin_plain(f"{shop_name} · Statement · {customer['name']}"), "Computer generated statement.", printed_on, date_system))
     return buf.getvalue()

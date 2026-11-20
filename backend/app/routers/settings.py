@@ -17,12 +17,13 @@ class SettingsPatch(BaseModel):
     address: str | None = Field(default=None, max_length=300)
     phone: str | None = Field(default=None, max_length=60)
     next_bill_no: int | None = Field(default=None, ge=1)
+    date_system: str | None = Field(default=None, pattern=r"^(bs|ad)$")
     backup_email_day: int | None = Field(default=None, ge=0, le=6)  # 0 = Sunday
     backup_email_time: str | None = Field(default=None, pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
 
 
 def payload(shop: Shop, user: User, db: Session) -> dict:
-    data = {"name": shop.name, "address": shop.address, "phone": shop.phone, "next_bill_no": shop.next_bill_no, "role": user.role}
+    data = {"name": shop.name, "address": shop.address, "phone": shop.phone, "next_bill_no": shop.next_bill_no, "date_system": shop.date_system, "role": user.role}
     if user.role == "owner":
         owner = db.scalar(select(User).where(User.shop_id == shop.id, User.role == "owner"))
         data |= {

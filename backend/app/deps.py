@@ -10,7 +10,7 @@ from .subscription import shop_state
 from .timeutil import aware, utcnow
 
 
-def current_user(request: Request, db: Session = Depends(get_db)) -> User:
+def _signed_in(request: Request, db: Session) -> tuple[User, str]:
     token = request.cookies.get(settings.cookie_name)
     if not token:
         raise HTTPException(401, "Not signed in")
@@ -23,9 +23,19 @@ def current_user(request: Request, db: Session = Depends(get_db)) -> User:
     state = shop_state(db.get(Shop, user.shop_id))
     if state == "suspended":
         raise HTTPException(403, "This shop is suspended. Please contact Hisab support.")
+    return user, state
+
+
+def current_user(request: Request, db: Session = Depends(get_db)) -> User:
+    user, state = _signed_in(request, db)
     if state == "expired" and request.method not in ("GET", "HEAD", "OPTIONS"):
         raise HTTPException(402, "The subscription has ended. You can still view and export, but not add or change entries.")
     return user
+
+
+def user_even_if_expired(request: Request, db: Session = Depends(get_db)) -> User:
+    """For the feedback form: a shop whose trial ended must still be able to write to us."""
+    return _signed_in(request, db)[0]
 
 
 def owner_only(user: User = Depends(current_user)) -> User:

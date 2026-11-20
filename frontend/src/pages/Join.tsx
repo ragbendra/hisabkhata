@@ -1,4 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import PasswordInput from "../components/PasswordInput";
 import { useState, type FormEvent } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
@@ -106,7 +107,7 @@ export default function JoinPage() {
       </div>
       <div>
         <label className="label" htmlFor="j-pass">{t("password")} ({t("min8", { defaultValue: "at least 8 characters" })})</label>
-        <input id="j-pass" className="field" type="password" value={f.password} onChange={(e) => setF({ ...f, password: e.target.value })} required minLength={8} autoComplete="new-password" />
+        <PasswordInput id="j-pass" className="field" value={f.password} onChange={(e) => setF({ ...f, password: e.target.value })} required minLength={8} autoComplete="new-password" />
       </div>
       {err && <p role="alert" className="text-sm text-owed">{err}</p>}
       <button className="btn-primary w-full" disabled={busy}>{t("createAccount", { defaultValue: "Create account" })}</button>

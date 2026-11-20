@@ -1,7 +1,6 @@
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api } from "../lib/api";
-import { adToBs } from "../lib/bs";
 import { parseNum } from "../lib/calc";
 import { useFmt } from "../lib/format";
 import type { HistoryEntry } from "../lib/types";
@@ -103,7 +102,7 @@ export default function LedgerCompact({
   const months = useMemo(() => {
     const groups: { key: string; label: string; rows: Row[]; debit: number; credit: number }[] = [];
     for (const r of older) {
-      const b = adToBs(r.e.date);
+      const b = f.ymd(r.e.date);
       const key = `${b.y}-${b.m}`;
       let g = groups[groups.length - 1];
       if (!g || g.key !== key) {
@@ -179,7 +178,7 @@ export default function LedgerCompact({
   const line = (r: Row) => {
     const e = r.e;
     const p = particulars(r);
-    const b = adToBs(e.date);
+    const b = f.ymd(e.date);
     const dead = e.voided;
     const hot = focusSale === e.id || (!!focusSale && focusSale === r.also);
     const on = selecting && isPicked(r);

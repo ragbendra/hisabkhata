@@ -22,6 +22,7 @@ from ..ledger import audit, bulk_state
 from ..models import (
     AccessRequest,
     AdminSession,
+    Feedback,
     Customer,
     Invite,
     PasswordReset,
@@ -413,6 +414,41 @@ def list_requests(
     if status != "all":
         q = q.where(AccessRequest.status == status)
     return [_request_out(r) for r in db.scalars(q)]
+
+
+@router.get("/feedback")
+def list_feedback(status: str = "new", _: PlatformAdmin = Depends(current_admin), db: Session = Depends(get_db)):
+    q = select(Feedback).order_by(Feedback.created_at.desc()).limit(200)
+    if status != "all":
+        q = q.where(Feedback.status == status)
+    out = []
+    for f in db.scalars(q):
+        shop, user = db.get(Shop, f.shop_id), db.get(User, f.user_id)
+        out.append(
+            {
+                "id": str(f.id),
+                "kind": f.kind,
+                "message": f.message,
+                "contact": f.contact,
+                "status": f.status,
+                "created_at": f.created_at.isoformat(),
+                "shop_name": shop.name if shop else "?",
+                "user_name": user.name if user else "?",
+                "user_login": user.login if user else None,
+            }
+        )
+    return out
+
+
+@router.post("/feedback/{feedback_id}/done")
+def feedback_done(feedback_id: UUID, done: bool = True, admin: PlatformAdmin = Depends(current_admin), db: Session = Depends(get_db)):
+    f = db.get(Feedback, feedback_id)
+    if f is None:
+        raise HTTPException(404, "Not found")
+    f.status = "done" if done else "new"
+    f.handled_at = utcnow() if done else None
+    db.commit()
+    return {"id": str(f.id), "status": f.status}
 
 
 class InviteIn(BaseModel):

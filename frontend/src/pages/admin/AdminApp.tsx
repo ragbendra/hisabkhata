@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import PasswordInput from "../../components/PasswordInput";
 import { useState, type FormEvent } from "react";
 import { Spinner } from "../../components/ui";
 import { ApiError, api } from "../../lib/api";
@@ -111,7 +112,7 @@ function AdminLogin({ offline }: { offline: boolean }) {
         </div>
         <div>
           <label className="label" htmlFor="a-pass">Password</label>
-          <input id="a-pass" className="field" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required disabled={needCode} />
+          <PasswordInput id="a-pass" className="field" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required disabled={needCode} />
         </div>
         {needCode && (
           <div>
@@ -128,13 +129,15 @@ function AdminLogin({ offline }: { offline: boolean }) {
 
 // ---------------------------------------------------------------- shell with tabs
 
-type Tab = "shops" | "requests" | "invites" | "settings";
+type Tab = "shops" | "requests" | "feedback" | "invites" | "settings";
 
 function AdminHome({ admin, onSignOut }: { admin: Admin; onSignOut: () => void }) {
   const [tab, setTab] = useState<Tab>("shops");
   const reqs = useQuery({ queryKey: ["admin-requests"], queryFn: () => api<RequestRow[]>("/admin/requests?status=new"), refetchInterval: 60_000, refetchOnMount: "always" });
   const waiting = reqs.data?.length ?? 0;
-  const tabs: [Tab, string][] = [["shops", "Shops"], ["requests", waiting ? `Requests (${waiting})` : "Requests"], ["invites", "Invites"], ["settings", "Settings"]];
+  const fb = useQuery({ queryKey: ["admin-feedback"], queryFn: () => api<FeedbackRow[]>("/admin/feedback?status=new"), refetchInterval: 60_000, refetchOnMount: "always" });
+  const unread = fb.data?.length ?? 0;
+  const tabs: [Tab, string][] = [["shops", "Shops"], ["requests", waiting ? `Requests (${waiting})` : "Requests"], ["feedback", unread ? `Feedback (${unread})` : "Feedback"], ["invites", "Invites"], ["settings", "Settings"]];
   return (
     <div className="mx-auto min-h-screen max-w-2xl px-4 pb-16">
       <header className="flex items-center justify-between py-4">
@@ -155,8 +158,53 @@ function AdminHome({ admin, onSignOut }: { admin: Admin; onSignOut: () => void }
       </nav>
       {tab === "shops" && <ShopsTab />}
       {tab === "requests" && <RequestsTab rows={reqs.data} loading={reqs.isLoading} />}
+      {tab === "feedback" && <FeedbackTab rows={fb.data} loading={fb.isLoading} />}
       {tab === "invites" && <InvitesTab />}
       {tab === "settings" && <SettingsTab admin={admin} />}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------- feedback
+
+interface FeedbackRow {
+  id: string;
+  kind: "problem" | "question" | "idea";
+  message: string;
+  contact: string | null;
+  created_at: string;
+  shop_name: string;
+  user_name: string;
+  user_login: string | null;
+}
+
+function FeedbackTab({ rows, loading }: { rows?: FeedbackRow[]; loading: boolean }) {
+  const qc = useQueryClient();
+  const [err, setErr] = useState<string | null>(null);
+  const done = useMutation({
+    mutationFn: (id: string) => api(`/admin/feedback/${id}/done`, { body: {} }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["admin-feedback"] }),
+    onError: (e) => setErr(errMsg(e)),
+  });
+  if (loading) return <Spinner />;
+  return (
+    <div className="space-y-3">
+      {err && <p role="alert" className="text-owed">{err}</p>}
+      {(rows ?? []).length === 0 && <p className="muted">No new messages.</p>}
+      {(rows ?? []).map((r) => (
+        <div key={r.id} className="card space-y-2">
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <p className="truncate font-semibold">{r.shop_name}</p>
+              <p className="truncate text-xs text-muted">{r.user_name}{r.user_login ? ` · ${r.user_login}` : ""} · {ago(r.created_at)}</p>
+            </div>
+            <span className="rounded-full bg-tint px-2 py-0.5 text-xs font-semibold capitalize text-brand">{r.kind}</span>
+          </div>
+          <p className="whitespace-pre-wrap text-sm">{r.message}</p>
+          {r.contact && <p className="text-sm">Reply to: <b>{r.contact}</b></p>}
+          <button className="btn-secondary !min-h-[40px] w-full text-sm" onClick={() => done.mutate(r.id)}>Mark as done</button>
+        </div>
+      ))}
     </div>
   );
 }
@@ -395,7 +443,7 @@ function TwoStep({ admin }: { admin: Admin }) {
       {admin.two_step ? (
         <>
           <p className="text-sm text-recv">On. Signing in needs a code from your authenticator app.</p>
-          <input className="field" type="password" placeholder="Your password, to turn it off" value={password} onChange={(e) => setPassword(e.target.value)} />
+          <PasswordInput className="field" placeholder="Your password, to turn it off" value={password} onChange={(e) => setPassword(e.target.value)} />
           <button className="btn-secondary w-full !text-owed" disabled={!password} onClick={() => void go(() => api("/admin/two-step/off", { body: { password } }))}>Turn off</button>
         </>
       ) : setup ? (

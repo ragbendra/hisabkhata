@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { LangToggle } from "../components/Layout";
+import PasswordInput from "../components/PasswordInput";
 import { api } from "../lib/api";
 import { queryClient } from "../lib/queryClient";
 import { flushOutbox } from "../lib/sync";
@@ -70,7 +71,7 @@ export default function LoginPage({ offlineNotice }: { offlineNotice?: string })
             <label className="label" htmlFor="password">
               {t("password")}
             </label>
-            <input id="password" type="password" className="field" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+            <PasswordInput id="password" className="field" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required />
           </div>
         )}
         {error && (
@@ -121,7 +122,7 @@ export function ResetPage() {
       ) : (
         <form onSubmit={submit} className="space-y-3">
           <h2 className="text-lg font-semibold">{t("newPassword")}</h2>
-          <input type="password" className="field" minLength={8} autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} required aria-label={t("newPassword")} />
+          <PasswordInput className="field" minLength={8} autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} required aria-label={t("newPassword")} />
           <p className="muted">{t("passwordMin8")}</p>
           {error && (
             <p role="alert" className="text-sm text-owed">

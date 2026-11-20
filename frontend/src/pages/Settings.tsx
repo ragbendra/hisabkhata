@@ -2,6 +2,9 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
+import DeleteHelperButton from "../components/DeleteHelperButton";
+import FeedbackForm from "../components/FeedbackForm";
+import PasswordInput from "../components/PasswordInput";
 import ShopProfileForm from "../components/ShopProfileForm";
 import { ConfirmButton, Section, Spinner } from "../components/ui";
 import { api, apiBlob } from "../lib/api";
@@ -142,7 +145,7 @@ export default function SettingsPage() {
         <div className="card space-y-3">
           <p className="muted">{t("helperHelp")}</p>
           {users.data?.filter((u) => u.role === "helper").map((u) => (
-            <div key={u.id} className="flex items-center justify-between gap-2">
+            <div key={u.id} className="flex flex-wrap items-center justify-between gap-2">
               <div className="min-w-0">
                 <div className="truncate font-medium">{u.name} <span className="muted">({u.login})</span></div>
                 {u.disabled && <div className="text-sm text-owed">{t("disabled")}</div>}
@@ -150,6 +153,7 @@ export default function SettingsPage() {
               <button className="btn-secondary" onClick={() => toggleUser.mutate({ id: u.id, disabled: !u.disabled })}>
                 {u.disabled ? t("enable") : t("disable")}
               </button>
+              <DeleteHelperButton id={u.id} name={u.name} onDone={() => void qc.invalidateQueries({ queryKey: ["users"] })} />
             </div>
           ))}
           <form
@@ -161,7 +165,7 @@ export default function SettingsPage() {
           >
             <input className="field" placeholder={t("helperName")} value={helper.name} onChange={(e) => setHelper({ ...helper, name: e.target.value })} required />
             <input className="field" placeholder={t("loginName")} autoCapitalize="none" value={helper.login} onChange={(e) => setHelper({ ...helper, login: e.target.value })} required minLength={2} />
-            <input className="field" type="password" placeholder={t("password")} autoComplete="new-password" value={helper.password} onChange={(e) => setHelper({ ...helper, password: e.target.value })} required minLength={6} />
+            <PasswordInput className="field" placeholder={t("password")} autoComplete="new-password" value={helper.password} onChange={(e) => setHelper({ ...helper, password: e.target.value })} required minLength={6} />
             <button className="btn-primary w-full">{t("addHelper")}</button>
           </form>
         </div>
@@ -176,6 +180,8 @@ export default function SettingsPage() {
           <ConfirmButton className="btn-secondary w-full" label={t("renameMerge")} confirmLabel={t("tapAgainConfirm")} disabled={!fruitFrom.trim() || !fruitInto.trim()} onConfirm={() => merge.mutate()} />
         </div>
       </Section>
+
+      <FeedbackForm />
 
       <Section title={t("account")}>
         <button className="btn-secondary w-full" onClick={() => void logout()}>{t("signOut")}</button>

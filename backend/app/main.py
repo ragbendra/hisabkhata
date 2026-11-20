@@ -23,6 +23,7 @@ from .routers import (
     customers,
     entries,
     export,
+    feedback,
     fruit_names,
     khata,
     public,
@@ -88,7 +89,8 @@ async def require_app_header(request: Request, call_next):
 
 api = APIRouter(prefix="/api")
 for module in (
-    auth, users, entries, customers, corrections, fruit_names, khata, reports, settings_router, export, bills, admin, public,
+    auth, users, entries, customers, corrections, fruit_names, khata, reports, settings_router, export,
+    bills, admin, public, feedback,
 ):
     api.include_router(module.router)
 

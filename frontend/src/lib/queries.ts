@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useEffect, useMemo, useState } from "react";
 import { api, fetchWithCache } from "./api";
+import { setDateSystem } from "./datesystem";
 import { db, type OutboxRow } from "./db";
 import { groupPending, overlayCustomers, totalToCollect } from "./pending";
 import type { Khata, FruitName, HistoryEntry, Me, SalesGroup, Settings, Sheet, UserRow, CustomerRow } from "./types";
@@ -9,7 +10,11 @@ import type { Khata, FruitName, HistoryEntry, Me, SalesGroup, Settings, Sheet, U
 export const useMe = () =>
   useQuery({
     queryKey: ["me"],
-    queryFn: () => fetchWithCache<Me>("me", "/auth/me"),
+    queryFn: async () => {
+      const m = await fetchWithCache<Me>("me", "/auth/me");
+      if (m?.shop?.date_system) setDateSystem(m.shop.date_system);
+      return m;
+    },
     staleTime: 60_000,
     retry: false,
     refetchOnWindowFocus: false,

@@ -62,6 +62,7 @@ class Shop(Base):
     name: Mapped[str] = mapped_column(String(200))
     address: Mapped[str | None] = mapped_column(String(300), nullable=True)
     phone: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    date_system: Mapped[str] = mapped_column(String(2), default="bs", server_default="bs")
     next_bill_no: Mapped[int] = mapped_column(Integer, default=1)
     backup_email_day: Mapped[int] = mapped_column(Integer, default=0)  # 0=Sunday .. 6=Saturday
     backup_email_time: Mapped[str] = mapped_column(String(5), default="20:00")  # Nepal time HH:MM
@@ -282,6 +283,23 @@ class Invite(Base):
     used_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
     revoked_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
     shop_id: Mapped[uuid.UUID | None] = mapped_column(UUIDPK, nullable=True)  # the shop it created
+
+
+class Feedback(Base):
+    """A question, problem or idea sent from inside the app by a shop user. Read by the platform admin."""
+
+    __tablename__ = "feedback"
+    id: Mapped[uuid.UUID] = pk()
+    shop_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("shops.id"), index=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"))
+    kind: Mapped[str] = mapped_column(String(10))  # problem | question | idea
+    message: Mapped[str] = mapped_column(String(2000))
+    contact: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    status: Mapped[str] = mapped_column(String(10), default="new", server_default="new")  # new | handled
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+    handled_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
+
+    __table_args__ = (Index("ix_feedback_status", "status", "created_at"),)
 
 
 class SubscriptionPayment(Base):

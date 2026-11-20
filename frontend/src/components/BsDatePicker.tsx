@@ -1,11 +1,10 @@
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { adToBs, bsMonthDays, bsToAd } from "../lib/bs";
 import { todayNpl } from "../lib/calc";
 import { useFmt } from "../lib/format";
 
 /**
- * FR-42: pick a date in BS; the AD date is shown beside it.
+ * Pick a date in the shop's calendar (BS or AD, set in Settings). In BS mode the AD date is shown beside it.
  * `value` and `onChange` use AD strings (YYYY-MM-DD), which is what is stored.
  */
 export default function BsDatePicker({
@@ -23,15 +22,15 @@ export default function BsDatePicker({
 }) {
   const { t } = useTranslation();
   const f = useFmt();
-  const cur = useMemo(() => adToBs(value || todayNpl()), [value]);
-  const nowYear = adToBs(todayNpl()).y;
+  const cur = useMemo(() => f.ymd(value || todayNpl()), [value, f.system]); // eslint-disable-line react-hooks/exhaustive-deps
+  const nowYear = f.ymd(todayNpl()).y;
   const years: number[] = [];
   for (let y = Math.min(nowYear - yearsBack, cur.y); y <= Math.max(nowYear + yearsForward, cur.y); y++) years.push(y);
-  const days = bsMonthDays(cur.y, cur.m);
+  const days = f.daysIn(cur.y, cur.m);
 
   const change = (y: number, m: number, d: number) => {
-    const max = bsMonthDays(y, m);
-    onChange(bsToAd(y, m, Math.min(d, max)));
+    const max = f.daysIn(y, m);
+    onChange(f.fromYmd(y, m, Math.min(d, max)));
   };
 
   return (
@@ -60,9 +59,11 @@ export default function BsDatePicker({
           ))}
         </select>
       </div>
-      <p className="muted mt-1">
-        {t("adDate")}: {f.digits(value || todayNpl())}
-      </p>
+      {f.system === "bs" && (
+        <p className="muted mt-1">
+          {t("adDate")}: {f.digits(value || todayNpl())}
+        </p>
+      )}
     </div>
   );
 }

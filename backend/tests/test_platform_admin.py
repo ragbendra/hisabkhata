@@ -256,3 +256,17 @@ def test_only_one_admin_can_exist_and_recovery_resets_access(admin):
     assert fresh.post("/admin/login", {"email": ADMIN[0], "password": ADMIN[1]}).status_code == 401  # old password dead
     r = fresh.post("/admin/login", {"email": ADMIN[0], "password": "brand-new-long-pass"})
     assert r.status_code == 200 and r.json()["two_step"] is False
+
+
+def test_feedback_from_an_expired_shop_reaches_the_admin(admin):
+    shop, sid = new_trial_shop(admin)
+    set_end(sid, -timedelta(days=1))
+    assert shop.post("/entries", entry(new="Ram", lines=[("Apple", 1, 10)])).status_code == 402  # read-only...
+    r = shop.post("/feedback", {"kind": "question", "message": "How do I renew?", "contact": "9801112233"})
+    assert r.status_code == 201, r.text  # ...but it can still write to us
+    rows = admin.get("/admin/feedback").json()
+    assert len(rows) == 1 and rows[0]["shop_name"] == "Trial Shop" and rows[0]["contact"] == "9801112233"
+    assert Api().get("/admin/feedback").status_code == 401 and Api().post("/feedback", {"message": "hello there"}).status_code == 401
+    assert admin.post(f"/admin/feedback/{rows[0]['id']}/done").json()["status"] == "done"
+    assert admin.get("/admin/feedback").json() == []
+    assert len(admin.get("/admin/feedback?status=all").json()) == 1

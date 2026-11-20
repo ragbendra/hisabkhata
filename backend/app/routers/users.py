@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from ..db import get_db
 from ..deps import owner_only
-from ..models import User, UserSession
+from ..models import PasswordReset, User, UserSession
 from ..security import hash_password
 from ..timeutil import utcnow
 
@@ -80,3 +80,19 @@ def patch_user(user_id: UUID, body: UserPatch, owner: User = Depends(owner_only)
                 db.delete(s)
     db.commit()
     return out(u)
+
+
+@router.delete("/{user_id}")
+def delete_helper(user_id: UUID, owner: User = Depends(owner_only), db: Session = Depends(get_db)):
+    """Removes a helper login for good. Bills and payments they entered stay; they just lose the name."""
+    u = db.get(User, user_id)
+    if u is None or u.shop_id != owner.shop_id:
+        raise HTTPException(404, "Not found")
+    if u.role == "owner":
+        raise HTTPException(400, "The owner login cannot be deleted")
+    for model in (UserSession, PasswordReset):
+        for row in db.scalars(select(model).where(model.user_id == u.id)):
+            db.delete(row)
+    db.delete(u)
+    db.commit()
+    return {"deleted": str(user_id)}

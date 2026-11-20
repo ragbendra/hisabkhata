@@ -605,3 +605,28 @@ def test_new_shop_from_invite_stores_address_and_phone(owner):
     with SessionLocal() as db:
         s = db.scalar(select(Shop).where(Shop.name == "CLI Shop"))
         assert (s.address, s.phone) == ("Chowk, Itahari", "9811111111")
+
+
+def test_owner_can_delete_helper_but_not_owner(owner):
+    h = owner.post("/users", {"name": "Hari", "login": "hari", "password": "secret1"})
+    assert h.status_code == 201, h.text
+    assert owner.delete(f"/users/{h.json()['id']}").status_code == 200
+    assert all(u["login"] != "hari" for u in owner.get("/users").json())
+    me = [u for u in owner.get("/users").json() if u["role"] == "owner"][0]
+    assert owner.delete(f"/users/{me['id']}").status_code == 400
+
+
+def test_date_system_setting_and_pdf(owner):
+    assert owner.get("/auth/me").json()["shop"]["date_system"] == "bs"
+    assert owner.patch("/settings", {"date_system": "xx"}).status_code == 422
+    assert owner.patch("/settings", {"date_system": "ad"}).json()["date_system"] == "ad"
+    assert owner.get("/auth/me").json()["shop"]["date_system"] == "ad"
+    cid = owner.post("/entries", entry(new="Sita Traders", lines=[("Apple", 10, 100)])).json()["customer"]["id"]
+    r = owner.get(f"/customers/{cid}/statement.pdf")
+    assert r.status_code == 200 and r.content[:4] == b"%PDF"
+
+
+def test_feedback_reaches_the_admin_and_expired_shops_can_still_write(owner):
+    assert owner.post("/feedback", {"kind": "problem", "message": "PDF will not download", "contact": "9800000000"}).status_code == 201
+    assert owner.post("/feedback", {"kind": "problem", "message": "x"}).status_code == 422
+    assert owner.post("/feedback", {"kind": "nonsense", "message": "long enough text"}).status_code == 422

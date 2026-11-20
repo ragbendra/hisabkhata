@@ -38,7 +38,7 @@ def me_payload(user: User, db: Session) -> dict:
         "name": user.name,
         "login": user.login,
         "role": user.role,
-        "shop": {"id": str(shop.id), "name": shop.name},
+        "shop": {"id": str(shop.id), "name": shop.name, "date_system": shop.date_system},
         "subscription": subscription_payload(shop),
     }
 

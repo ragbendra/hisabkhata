@@ -9,7 +9,7 @@ export interface Me {
   name: string;
   login: string;
   role: Role;
-  shop: { id: string; name: string };
+  shop: { id: string; name: string; date_system?: "bs" | "ad" };
 }
 
 export interface CustomerRow {
