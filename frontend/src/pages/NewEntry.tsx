@@ -331,6 +331,28 @@ function EntryForm({
         e.preventDefault();
         void save(false);
       }}
+      onKeyDown={(e) => {
+        // Computer keyboard: Enter moves to the next box instead of saving by accident.
+        // Ctrl+Enter saves. Shift+Enter adds another fruit line.
+        if (e.key !== "Enter" || e.nativeEvent.isComposing) return;
+        const el = e.target as HTMLElement;
+        if (el.tagName !== "INPUT" || (el as HTMLInputElement).type === "search") return;
+        e.preventDefault();
+        if (e.ctrlKey || e.metaKey) {
+          void save(false);
+          return;
+        }
+        if (e.shiftKey) {
+          update((d) => ({ ...d, lines: [...d.lines, newLine()] }));
+          window.setTimeout(() => {
+            const all = document.querySelectorAll<HTMLInputElement>("input[data-fruit]");
+            all[all.length - 1]?.focus();
+          }, 30);
+          return;
+        }
+        const boxes = Array.from(e.currentTarget.querySelectorAll<HTMLInputElement>("input:not([disabled]):not([type=hidden])"));
+        boxes[boxes.indexOf(el as HTMLInputElement) + 1]?.focus();
+      }}
     >
       <UndoBar />
       <div className="-ml-2 flex items-center justify-between">
@@ -554,6 +576,7 @@ function EntryForm({
               </div>
               <input
                 className="field"
+                data-fruit
                 aria-label={t("fruitName")}
                 placeholder={t("fruitName")}
                 autoComplete="off"
@@ -715,11 +738,12 @@ function EntryForm({
               <Balance value={balanceAfter} className="text-xl" />
             </div>
           </div>
-          <button className="btn-primary !h-[52px] px-7 text-base" disabled={busy}>
+          <button className="btn-primary !h-[52px] px-7 text-base" disabled={busy} title={t("saveKeys", { defaultValue: "Ctrl+Enter" })}>
             {t("save")}
           </button>
         </div>
       </div>
+      <p className="muted hidden text-center lg:block">{t("entryKeysHint", { defaultValue: "Enter: next box · Shift+Enter: add a fruit · Ctrl+Enter: save" })}</p>
       {pending.size > 0 && <p className="muted text-center">{t("waitingCount", { n: f.digits(outbox.filter((r) => !r.failed).length) })}</p>}
       <div className="h-24" aria-hidden />
     </form>

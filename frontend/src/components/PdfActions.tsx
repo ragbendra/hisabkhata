@@ -56,6 +56,29 @@ function saveFile(blob: Blob, filename: string) {
   setTimeout(() => URL.revokeObjectURL(url), 10_000);
 }
 
+/** Opens the browser's print dialog for the PDF, using a hidden frame. Falls back to downloading it. */
+function printBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const frame = document.createElement("iframe");
+  frame.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0";
+  frame.src = url;
+  const cleanup = () => {
+    frame.remove();
+    URL.revokeObjectURL(url);
+  };
+  frame.onload = () => {
+    try {
+      frame.contentWindow?.focus();
+      frame.contentWindow?.print();
+      setTimeout(cleanup, 60_000);
+    } catch {
+      cleanup();
+      saveFile(blob, filename);
+    }
+  };
+  document.body.appendChild(frame);
+}
+
 export function PdfButton({
   source,
   label,
@@ -65,7 +88,7 @@ export function PdfButton({
 }: {
   source: Source;
   label: string;
-  mode?: "download" | "share";
+  mode?: "download" | "share" | "print";
   className?: string;
   disabled?: boolean;
 }) {
@@ -79,7 +102,9 @@ export function PdfButton({
     try {
       const { blob, filename } = await fetchPdf(source);
       const file = new File([blob], filename, { type: "application/pdf" });
-      if (mode === "share" && navigator.canShare?.({ files: [file] })) {
+      if (mode === "print") {
+        printBlob(blob, filename);
+      } else if (mode === "share" && navigator.canShare?.({ files: [file] })) {
         try {
           await navigator.share({ files: [file], title: filename });
         } catch (x) {
@@ -123,6 +148,8 @@ export const StatementPdfButtons = ({ customerId, className = "btn-secondary fle
     <div className="flex w-full flex-wrap gap-2">
       <PdfButton source={source} mode="share" label={t("shareLedger", { defaultValue: "Share ledger" })} className={className} />
       <PdfButton source={source} mode="download" label={t("downloadPdf", { defaultValue: "Download PDF" })} className={className} />
+      {/* only on a computer: phones have no printer to talk to */}
+      <PdfButton source={source} mode="print" label={t("printPdf", { defaultValue: "Print" })} className={`${className} hidden lg:inline-flex`} />
     </div>
   );
 };

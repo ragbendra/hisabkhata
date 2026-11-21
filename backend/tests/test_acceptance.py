@@ -687,3 +687,29 @@ def test_crates_only_entry_needs_a_payment_id_and_no_crates_is_rejected(owner):
     cid = owner.post("/entries", entry(new="Sita", lines=[("Apple", 10, 100)])).json()["customer"]["id"]
     assert owner.post("/entries", {"customer_id": cid, "crates_back": 3}).status_code == 422  # no payment_id
     assert owner.post("/entries", {"customer_id": cid, "payment_id": "00000000-0000-4000-8000-000000000001"}).status_code == 422  # nothing to save
+
+
+def test_export_has_crate_columns_only_when_tracking(owner):
+    import io
+    from openpyxl import load_workbook
+
+    def sheets():
+        wb = load_workbook(io.BytesIO(owner.get("/export/full").content))
+        return {n: [c.value for c in wb[n][4 if n == "Balances" else 1]] for n in wb.sheetnames}, wb
+
+    head, _ = sheets()
+    assert "Crates with him" not in head["Balances"]  # off by default: the file is unchanged
+
+    owner.patch("/settings", {"track_crates": True})
+    body = entry(new="Crate Co", lines=[("Apple", 10, 100)])
+    body["lines"][0]["crates"] = 8
+    cid = owner.post("/entries", body).json()["customer"]["id"]
+    from conftest import uid
+    owner.post("/entries", {"customer_id": cid, "payment_id": uid(), "crates_back": 3})
+    head, wb = sheets()
+    assert head["Balances"][-1] == "Crates with him" and head["Sales"][-1] == "Crates" and head["Payments"][-1] == "Crates returned"
+    bal_rows = {r[0]: r for r in wb["Balances"].iter_rows(min_row=5, values_only=True)}
+    assert bal_rows["Crate Co"][-1] == 5
+    assert [r[-1] for r in wb["Sales"].iter_rows(min_row=2, values_only=True)] == [8]
+    pay = list(wb["Payments"].iter_rows(min_row=2, values_only=True))
+    assert pay[0][-1] == 3 and pay[0][-2] == "Crates entry"

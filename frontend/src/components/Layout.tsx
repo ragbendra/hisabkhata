@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { useMe, useOnline } from "../lib/queries";
 import { setLang } from "../lib/i18n";
 import { useTheme } from "../lib/theme";
+import CustomerSidebar from "./CustomerSidebar";
 import InstallHint from "./InstallHint";
 import SubscriptionBanner from "./SubscriptionBanner";
 import { IconBook, IconMoon, IconPlus, IconReceipt, IconSliders, IconSun } from "./icons";
@@ -53,6 +54,7 @@ export default function Layout() {
   const online = useOnline();
   const loc = useLocation();
   const onEntry = loc.pathname === "/entry";
+  const onCustomer = loc.pathname.startsWith("/customer/");
 
   const tab = ({ isActive }: { isActive: boolean }) =>
     `flex min-h-touch min-w-[64px] flex-col items-center justify-center gap-0.5 text-[11px] ${
@@ -60,7 +62,7 @@ export default function Layout() {
     }`;
 
   return (
-    <div className="mx-auto flex min-h-screen max-w-xl flex-col">
+    <div className="mx-auto flex min-h-screen max-w-xl flex-col lg:max-w-6xl">
       <header className="sticky top-0 z-30 flex items-center justify-between gap-2 bg-bg px-5 pb-2 pt-[calc(1rem+env(safe-area-inset-top))]">
         <Link to="/" className="min-h-touch min-w-0 flex-1 py-1">
           <span className="block break-words font-serif text-lg font-semibold leading-tight tracking-tight">
@@ -83,9 +85,12 @@ export default function Layout() {
         </div>
       )}
 
-      <main className="pb-nav flex-1 px-5 pt-2">
-        <SubscriptionBanner />
-        <Outlet />
+      <main className="pb-nav flex-1 px-5 pt-2 lg:flex lg:gap-6">
+        {onCustomer && <CustomerSidebar />}
+        <div className={`min-w-0 flex-1 lg:max-w-3xl ${onCustomer ? "" : "lg:mx-auto"}`}>
+          <SubscriptionBanner />
+          <Outlet />
+        </div>
       </main>
 
       {/* floating navigation (the entry form has its own sticky save bar instead) */}

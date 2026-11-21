@@ -24,6 +24,7 @@ def build_workbook(db: Session, shop_id) -> tuple[str, bytes]:
     today = now.date()
     customers = {c.id: c for c in db.scalars(select(Customer).where(Customer.shop_id == shop_id))}
     states = bulk_state(db, shop_id)
+    crates = bool(shop.track_crates)
 
     wb = Workbook()
     ws = wb.active
@@ -35,6 +36,7 @@ def build_workbook(db: Session, shop_id) -> tuple[str, bytes]:
         [
             "Customer", "Phone", "Balance", "Old balance carried over", "Last payment (BS)", "Last payment (AD)",
             "Collection date (BS)", "Collection date (AD)",
+            *(["Crates with him"] if crates else []),
         ]
     )
     for cell in ws[4]:
@@ -49,11 +51,12 @@ def build_workbook(db: Session, shop_id) -> tuple[str, bytes]:
             [
                 c.name, c.phone or "", st.balance if st else 0, st.opening if st else 0,
                 *_bs_ad(last_paid), *_bs_ad(c.next_collection_date),
+                *([st.crates if st else 0] if crates else []),
             ]
         )
 
     ws2 = wb.create_sheet("Sales")
-    ws2.append(["Date (BS)", "Date (AD)", "Bill no", "Customer", "Fruit", "Kg", "Rate", "Amount", "Status"])
+    ws2.append(["Date (BS)", "Date (AD)", "Bill no", "Customer", "Fruit", "Kg", "Rate", "Amount", "Status", *(["Crates"] if crates else [])])
     for cell in ws2[1]:
         cell.font = Font(bold=True)
     sales = db.scalars(
@@ -66,11 +69,12 @@ def build_workbook(db: Session, shop_id) -> tuple[str, bytes]:
                 [
                     *_bs_ad(s.bill_date), s.bill_no or "", customers[s.customer_id].name, ln.fruit_name,
                     ln.kg, ln.rate, ln.amount, status,
+                    *([ln.crates or 0] if crates else []),
                 ]
             )
 
     ws3 = wb.create_sheet("Payments")
-    ws3.append(["Date (BS)", "Date (AD)", "Time", "Customer", "Amount", "Mode", "Note", "Status", "Type"])
+    ws3.append(["Date (BS)", "Date (AD)", "Time", "Customer", "Amount", "Mode", "Note", "Status", "Type", *(["Crates returned"] if crates else [])])
     for cell in ws3[1]:
         cell.font = Font(bold=True)
     for p in db.scalars(select(Payment).where(Payment.shop_id == shop_id).order_by(Payment.paid_at)):
@@ -78,7 +82,9 @@ def build_workbook(db: Session, shop_id) -> tuple[str, bytes]:
         ws3.append(
             [
                 *_bs_ad(local.date()), f"{local:%H:%M}", customers[p.customer_id].name, p.amount, p.mode,
-                p.note or "", "Voided" if p.voided_at else "Active", "Discount / round-off" if p.kind == "discount" else "Payment",
+                p.note or "", "Voided" if p.voided_at else "Active",
+                {"discount": "Discount / round-off", "crates": "Crates entry"}.get(p.kind, "Payment"),
+                *([p.crates_in] if crates else []),
             ]
         )
 

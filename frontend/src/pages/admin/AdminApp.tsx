@@ -139,7 +139,7 @@ function AdminHome({ admin, onSignOut }: { admin: Admin; onSignOut: () => void }
   const unread = fb.data?.length ?? 0;
   const tabs: [Tab, string][] = [["shops", "Shops"], ["requests", waiting ? `Requests (${waiting})` : "Requests"], ["feedback", unread ? `Feedback (${unread})` : "Feedback"], ["invites", "Invites"], ["settings", "Settings"]];
   return (
-    <div className="mx-auto min-h-screen max-w-2xl px-4 pb-16">
+    <div className="mx-auto min-h-screen max-w-2xl px-4 pb-16 lg:max-w-6xl">
       <header className="flex items-center justify-between py-4">
         <div>
           <h1 className="font-serif text-2xl font-semibold text-brand">Hisab admin</h1>
