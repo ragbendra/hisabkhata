@@ -59,6 +59,7 @@ def row(c: Customer, st: CustState, today: date) -> dict:
         "phone": c.phone,
         "address": c.address,
         "balance": money(st.balance),
+        "crates": st.crates,
         "last_activity": st.last_activity.isoformat() if st.last_activity else None,
         "days_owing": owed[0].age_days if owed else None,  # age of the oldest still-owed amount (FR-47)
         "next_collection_date": c.next_collection_date.isoformat() if c.next_collection_date else None,

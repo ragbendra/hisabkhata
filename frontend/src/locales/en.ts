@@ -361,6 +361,23 @@ export const en = {
   fbMessage: "Your message",
   fbContact: "Phone or email to reply to (optional)",
   fbSend: "Send",
+  cratesReturned: "Crates returned",
+  cratesGiven: "Crates given",
+  cratesBack: "Crates he gave back",
+  oldCrates: "Crates he already holds",
+  cratesWithHim: "Crates with him: {{n}}",
+  cratesExtra: "He returned {{n}} extra crates",
+  cratesButton: "Crates in / out",
+  cratesDirBack: "He gave back",
+  cratesDirLent: "I gave him",
+  cratesCount: "Number of crates",
+  cratesTrack: "Crates",
+  cratesTrackOn: "Tracking crates: on",
+  cratesTrackOff: "Tracking crates: off",
+  cratesTrackHint: "Adds crates given, returned and still with each customer, in the ledger, the Khata and the PDF.",
+  cratesOutTotal: "Crates out: {{n}} with {{c}} customers",
+  cratesEntry: "Crates entry",
+  type_crates: "Crates",
 };
 
 export type Messages = typeof en;

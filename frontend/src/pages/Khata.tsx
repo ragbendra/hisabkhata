@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
+import CratesBadge, { CratesOutSummary } from "../components/CratesBadge";
 import UndoBar from "../components/UndoBar";
 import { IconChevron, IconSearch, initial } from "../components/icons";
 import { Balance, ErrorBox, Modal, Section, Spinner } from "../components/ui";
@@ -90,6 +91,7 @@ export default function KhataPage() {
         <div className="text-sm text-muted">{t("totalToCollect")}</div>
         <div className="money mt-1 text-5xl leading-tight tracking-tight">{f.money(totals.total)}</div>
         <div className="mt-2 text-sm text-muted">{t("customersOwe", { n: f.digits(totals.count) })}</div>
+        <CratesOutSummary crates={k.crates_out} holders={k.crates_holders} />
       </div>
 
       {/* FR-20 */}
@@ -172,6 +174,7 @@ export default function KhataPage() {
               pending={c.pending_new}
               sub={`${t("lastActivity")}: ${f.date(c.last_activity) || "—"}`}
               balance={c.balance}
+              crates={c.crates}
             />
           ))}
         </div>
@@ -182,7 +185,7 @@ export default function KhataPage() {
   );
 }
 
-function CustomerRow({ id, name, sub, balance, pending }: { id: string; name: string; sub: string; balance: string; pending?: boolean }) {
+function CustomerRow({ id, name, sub, balance, pending, crates }: { id: string; name: string; sub: string; balance: string; pending?: boolean; crates?: number }) {
   const { t } = useTranslation();
   return (
     <Link to={`/customer/${id}`} className="flex min-h-[64px] items-center gap-3 px-4 py-2.5">
@@ -196,6 +199,7 @@ function CustomerRow({ id, name, sub, balance, pending }: { id: string; name: st
       </span>
       <span className="shrink-0 text-right">
         <Balance value={balance} />
+        <CratesBadge crates={crates} compact className="mt-0.5" />
       </span>
     </Link>
   );

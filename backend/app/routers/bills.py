@@ -94,18 +94,29 @@ def _statement_rows(entries: list[dict], keys: set[str] | None = None) -> list[d
     by_id = {e["id"]: e for e in entries}
 
     def kind(e: dict) -> str:
-        return "payment" if e["type"] == "discount" else e["type"]
+        return "payment" if e["type"] in ("discount", "crates") else e["type"]
 
     def picked(e: dict) -> bool:
         return keys is None or f"{kind(e)}:{e['id']}" in keys
 
     rows = []
     for e in entries:
-        if e["type"] == "payment" and e.get("with_sale") in by_id and picked(by_id[e["with_sale"]]):
+        if e["type"] in ("payment", "crates") and e.get("with_sale") in by_id and picked(by_id[e["with_sale"]]):
             continue  # shown on its bill's line
         if not picked(e):
             continue
-        row = {"date": date.fromisoformat(e["date"]), "head": "", "tag": None, "items": "", "debit": Decimal(0), "credit": Decimal(0), "balance": Decimal(e["balance_after"])}
+        row = {
+            "date": date.fromisoformat(e["date"]),
+            "head": "",
+            "tag": None,
+            "items": "",
+            "debit": Decimal(0),
+            "credit": Decimal(0),
+            "balance": Decimal(e["balance_after"]),
+            "c_out": e.get("crates_out", 0),
+            "c_in": e.get("crates_in", 0),
+            "c_bal": e.get("crates_after", 0),
+        }
         amount = Decimal(e["amount"])
         if e["type"] == "sale":
             pw = e.get("paid_with")
@@ -114,12 +125,21 @@ def _statement_rows(entries: list[dict], keys: set[str] | None = None) -> list[d
             row["tag"] = mode_text(pw["mode"]) if paid else "On credit"
             row["items"] = ", ".join(f"{ln['fruit_name']} {Decimal(ln['kg']).normalize():f} kg" for ln in e["lines"])
             row["debit"], row["credit"] = max(amount - paid, Decimal(0)), paid
+            if pw and not pw["voided"]:  # crates handed back with the bill sit on the same line
+                row["c_in"] += pw.get("crates_in", 0)
+                row["c_out"] += pw.get("crates_out", 0)
+                pe = by_id[pw["id"]]
+                if pe["crates_before"] == e["crates_after"]:
+                    row["c_bal"] = pe["crates_after"]
             if paid:
                 pe = by_id[pw["id"]]
                 if pe["balance_before"] == e["balance_after"]:
                     row["balance"] = Decimal(pe["balance_after"])
         elif e["type"] == "payment":
             row["head"], row["tag"], row["items"], row["credit"] = "Payment received", mode_text(e["mode"]), e.get("note") or "", amount
+        elif e["type"] == "crates":
+            row["head"] = "Crates returned" if e.get("crates_in") else "Crates given"
+            row["items"] = e.get("note") or ""
         elif e["type"] == "discount":
             row["head"], row["items"], row["credit"] = "Discount", e.get("note") or "", amount
         else:
@@ -137,6 +157,7 @@ def _statement(db: Session, user: User, customer_id: UUID, keys: set[str] | None
     if keys is not None and not rows:
         raise HTTPException(422, "None of the selected entries were found")
     closing = Decimal(entries[-1]["balance_after"]) if entries else Decimal(0)
+    closing_crates = entries[-1].get("crates_after", 0) if entries else 0
     selection = (len(rows), len(_statement_rows(entries))) if keys is not None else None
     data = build_statement(
         shop_name=shop.name,
@@ -146,6 +167,8 @@ def _statement(db: Session, user: User, customer_id: UUID, keys: set[str] | None
         customer=_info(c),
         rows=rows,
         closing=closing,
+        closing_crates=closing_crates,
+        track_crates=shop.track_crates,
         printed_on=today_npl(),
         selection=selection,
     )

@@ -3,6 +3,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import BsDatePicker from "../components/BsDatePicker";
+import CratesAdjustButton from "../components/CratesAdjustButton";
+import CratesBadge from "../components/CratesBadge";
 import { DeleteCustomerButton, DeleteEntryButton } from "../components/EntryActions";
 import LedgerCompact from "../components/LedgerCompact";
 import { StatementPdfButtons } from "../components/PdfActions";
@@ -105,6 +107,7 @@ export default function CustomerPage() {
         <div className="mt-4">
           <div className="text-[13px] text-muted">{balance < 0 ? "" : t("totalToCollect")}</div>
           <Balance value={balance} className="block text-[40px] leading-tight tracking-tight" />
+          <CratesBadge crates={s.crates} className="mt-2" />
         </div>
         <div className="mt-3 flex gap-2">
           <Link className="btn-primary flex-1" to={`/entry?customer=${s.id}`}>
@@ -135,6 +138,7 @@ export default function CustomerPage() {
         <LedgerCompact entries={histQ.data ?? []} loading={histQ.isLoading} focusSale={focusSale}
                        onOpen={setOpen} canSelect={owner} onChanged={invalidate} customerId={s.id} />
         <StatementPdfButtons customerId={s.id} />
+        <div className="mt-3"><CratesAdjustButton customerId={s.id} onDone={invalidate} /></div>
       </div>
 
       {owner && (
@@ -299,7 +303,7 @@ function EntryDetail({
       {owner && !e.voided && e.type !== "opening" && (
         <div className="mt-4 flex flex-wrap gap-2">
           <button className="btn-secondary flex-1" onClick={() => setEditing(true)}>{t("edit")}</button>
-          <DeleteEntryButton entry={e} paidWith={e.paid_with ?? undefined} onDone={() => { onChanged(); onClose(); }} />
+          <DeleteEntryButton entry={e} paidWith={paidWith} onDone={() => { onChanged(); onClose(); }} />
         </div>
       )}
     </Modal>

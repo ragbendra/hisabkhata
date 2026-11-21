@@ -145,6 +145,9 @@ def khata(user: User = Depends(current_user), db: Session = Depends(get_db)):
         "today": today.isoformat(),
         "total_to_collect": money(total),
         "owing_count": len(owing),
+        # crates out in the market: what customers still hold (archived customers are hidden, so not counted)
+        "crates_out": sum(max(states.get(c.id, CustState()).crates, 0) for c in customers if c.archived_at is None),
+        "crates_holders": sum(1 for c in customers if c.archived_at is None and states.get(c.id, CustState()).crates > 0),
         "archived": {"count": len(archived_all), "owing": money(archived_owing)},
         "today_card": today_card(db, user, today),
         "collect_now": collect_now,

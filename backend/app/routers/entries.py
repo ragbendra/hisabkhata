@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 
 from ..db import get_db
 from ..deps import current_user
-from ..ledger import balance_for, line_amount, money
+from ..ledger import balance_for, line_amount, money, state_for
 from ..models import Customer, FruitName, Opening, Payment, Sale, SaleLine, Shop, User
 from ..timeutil import aware, at_npl, npl_date, utcnow
 
@@ -43,6 +43,8 @@ class NewCustomerIn(BaseModel):
     old_balance: Decimal | None = Field(default=None, max_digits=14, decimal_places=2)
     old_balance_date: date | None = None
     opening_id: UUID | None = None
+    old_crates: int | None = Field(default=None, ge=0, le=100000)  # crates he already holds from before the app
+    old_crates_id: UUID | None = None
 
 
 class EntryIn(BaseModel):
@@ -60,6 +62,9 @@ class EntryIn(BaseModel):
     kind: Literal["payment", "discount"] = "payment"
     note: str | None = Field(default=None, max_length=300)
 
+    crates_back: int = Field(default=0, ge=0, le=100000)  # empty crates he returns in this visit
+    crates_lent: int = Field(default=0, ge=0, le=100000)  # crates handed out without a bill
+
     collect_by: date | None = None  # present and null = "none"
     created_at: datetime | None = None  # when the phone saved it (offline entries)
 
@@ -67,12 +72,13 @@ class EntryIn(BaseModel):
     def check(self):
         if (self.customer_id is None) == (self.new_customer is None):
             raise ValueError("Give either customer_id or new_customer")
-        if not self.lines and self.received_amount is None:
-            raise ValueError("Add at least one fruit line or a received amount")
+        crates_net = self.crates_back - self.crates_lent
+        if not self.lines and self.received_amount is None and crates_net == 0:
+            raise ValueError("Add at least one fruit line, a received amount or crates")
         if self.lines and self.sale_id is None:
             raise ValueError("sale_id is required when there are fruit lines")
-        if self.received_amount is not None and self.payment_id is None:
-            raise ValueError("payment_id is required when there is a received amount")
+        if (self.received_amount is not None or crates_net != 0) and self.payment_id is None:
+            raise ValueError("payment_id is required when there is a received amount or crates")
         return self
 
 
@@ -111,6 +117,8 @@ def process(db: Session, user: User, body: EntryIn) -> dict:
             raise HTTPException(403, "Helpers cannot record a discount or round-off")
         if body.new_customer and body.new_customer.old_balance not in (None, Decimal("0")):
             raise HTTPException(403, "Helpers cannot set an old balance")
+        if body.new_customer and body.new_customer.old_crates:
+            raise HTTPException(403, "Helpers cannot set old crates")
         if body.entry_date and body.entry_date != entry_day:
             raise HTTPException(403, "Helpers cannot backdate an entry")
     bill_date = entry_day if helper else (body.entry_date or entry_day)
@@ -158,6 +166,24 @@ def process(db: Session, user: User, body: EntryIn) -> dict:
                 if nc.opening_id:
                     opening.id = nc.opening_id
                 db.add(opening)
+            if nc.old_crates:
+                old_day = nc.old_balance_date or entry_day
+                brought = Payment(
+                    shop_id=user.shop_id,
+                    customer_id=cust.id,
+                    kind="crates",
+                    amount=Decimal("0"),
+                    mode="cash",
+                    paid_at=at_npl(old_day, created_at - timedelta(seconds=1)),  # sorts before the first bill of that day
+                    note="Crates brought forward",
+                    crates_in=-nc.old_crates,
+                    created_at=created_at - timedelta(seconds=1),  # not paired with the first bill
+                    created_by=user.id,
+                    server_received_at=now,
+                )
+                if nc.old_crates_id:
+                    brought.id = nc.old_crates_id
+                db.add(brought)
 
     created_any = False
     sale_out = payment_out = None
@@ -202,8 +228,9 @@ def process(db: Session, user: User, body: EntryIn) -> dict:
                 shop.next_bill_no = max(shop.next_bill_no, int(bill_no) + 1)
         sale_out = {"id": str(sale.id), "total": money(sale.total), "bill_no": sale.bill_no}
 
-    # ---- payment
-    if body.received_amount is not None:
+    # ---- payment, and/or crates handed back (one row holds both)
+    crates_net = body.crates_back - body.crates_lent
+    if body.received_amount is not None or crates_net != 0:
         pay = db.get(Payment, body.payment_id)
         if pay is not None:
             if pay.shop_id != user.shop_id:
@@ -214,8 +241,9 @@ def process(db: Session, user: User, body: EntryIn) -> dict:
                 id=body.payment_id,
                 shop_id=user.shop_id,
                 customer_id=cust.id,
-                kind=body.kind,
-                amount=body.received_amount,
+                kind=body.kind if body.received_amount is not None else "crates",
+                amount=body.received_amount if body.received_amount is not None else Decimal("0"),
+                crates_in=crates_net,
                 mode=body.mode,
                 paid_at=paid_at,
                 note=(body.note or "").strip() or None,
@@ -225,10 +253,11 @@ def process(db: Session, user: User, body: EntryIn) -> dict:
             )
             db.add(pay)
             created_any = True
-        payment_out = {"id": str(pay.id), "amount": money(pay.amount), "kind": pay.kind}
+        payment_out = {"id": str(pay.id), "amount": money(pay.amount), "kind": pay.kind, "crates_in": pay.crates_in}
 
     db.flush()
     balance = balance_for(db, user.shop_id, cust.id)
+    crates = state_for(db, user.shop_id, cust.id).crates
 
     # ---- collection date (FR-11)
     if created_any:
@@ -243,6 +272,7 @@ def process(db: Session, user: User, body: EntryIn) -> dict:
             "id": str(cust.id),
             "name": cust.name,
             "balance": money(balance),
+            "crates": crates,
             "next_collection_date": cust.next_collection_date.isoformat() if cust.next_collection_date else None,
         },
         "sale": sale_out,

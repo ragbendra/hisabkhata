@@ -261,6 +261,10 @@ def _th(text: str, right: bool = False, center: bool = False) -> Paragraph:
     )
 
 
+def _th_small(text: str) -> Paragraph:
+    return Paragraph(text, _style("ths", fontName="Helvetica-Bold", fontSize=7, leading=10, textColor=PINE, alignment=TA_RIGHT))
+
+
 def _grid(extra: list | None = None) -> TableStyle:
     """Bordered table: pale green heading band, thin ruling inside, a firm pine frame."""
     return TableStyle(
@@ -440,8 +444,11 @@ def build_statement(
     printed_on: date,
     selection: tuple[int, int] | None = None,
     date_system: str = "bs",
+    track_crates: bool = False,
+    closing_crates: int = 0,
 ) -> bytes:
-    """rows: date, head, tag, items, debit, credit, balance (ledger order, oldest first).
+    """rows: date, head, tag, items, debit, credit, balance, and c_out / c_in / c_bal (crates) when track_crates.
+    Ledger order, oldest first.
     selection=(shown, all): the statement lists only some entries; balances are still the real running balances."""
     buf = io.BytesIO()
     doc = _doc(buf, f"Statement {customer['name']}", shop_name)
@@ -456,14 +463,40 @@ def build_statement(
         Paragraph(label, _style("bl", fontName="Helvetica-Bold", fontSize=8, leading=10, textColor=MUTED, alignment=TA_RIGHT)),
         Paragraph(f"Rs {inr(abs(closing))}", _style("ba", fontName="Helvetica-Bold", fontSize=19, leading=23, textColor=color, alignment=TA_RIGHT)),
     ]
+    if track_crates:
+        crate_word = "CRATES WITH CUSTOMER" if closing_crates >= 0 else "CRATES RETURNED EXTRA"
+        amount += [
+            Spacer(1, 1.5 * mm),
+            Paragraph(f"{crate_word}: <b>{abs(closing_crates)}</b>", _style("cr", fontSize=9, leading=11, textColor=MUTED, alignment=TA_RIGHT)),
+        ]
     story.append(_party_box("CUSTOMER", customer["name"], customer.get("phone"), customer.get("address"), right=amount))
     if selection:
         story.append(Spacer(1, 2 * mm))
         story.append(Paragraph(f"<b>Selected entries only</b>: {selection[0]} of {selection[1]}. The balance column is the running balance of the full account.", S_SMALL))
     story.append(Spacer(1, 4 * mm))
 
-    data = [[_th("DATE", center=True), _th("PARTICULARS"), _th("DEBIT (RS)", True), _th("CREDIT (RS)", True), _th("BALANCE (RS)", True)]]
+    def crate_cell(n: int, bold: bool = False) -> Paragraph:
+        return Paragraph(
+            f"<b>{n}</b>" if (n and bold) else (str(n) if n else ""),
+            _style("cc", fontSize=9.5, leading=12, alignment=TA_RIGHT),
+        )
+
+    ncol = 8 if track_crates else 5
+
+    def blank(k: int) -> list:
+        return [""] * k
+
+    if track_crates:
+        data = [
+            [_th("DATE", center=True), _th("PARTICULARS"), _th("DEBIT", center=True), "", _th("CREDIT", center=True), "", _th("BALANCE", center=True), ""],
+            ["", "", _th("RS", True), _th_small("CRATES"), _th("RS", True), _th_small("CRATES"), _th("RS", True), _th_small("CRATES")],
+        ]
+        head_rows = 2
+    else:
+        data = [[_th("DATE", center=True), _th("PARTICULARS"), _th("DEBIT (RS)", True), _th("CREDIT (RS)", True), _th("BALANCE (RS)", True)]]
+        head_rows = 1
     t_debit = t_credit = Decimal(0)
+    t_out = t_in = 0
     for r in rows:
         first = f"<b>{latin(r['head'])}</b>"
         part = [Paragraph(first, S_CELL)]
@@ -473,37 +506,77 @@ def build_statement(
             part.append(Paragraph(latin(r["items"]), S_CELLM))
         t_debit += r["debit"]
         t_credit += r["credit"]
+        t_out += r.get("c_out", 0)
+        t_in += r.get("c_in", 0)
         bal = r["balance"]
-        data.append(
-            [
-                _date_cell(r["date"], date_system),
-                part,
-                _num(r["debit"], OWED),
-                _num(r["credit"], RECV),
-                Paragraph(f"<b>{'-' if bal < 0 else ''}{inr(abs(bal))}</b>", _style("nb", fontSize=9.5, leading=12, alignment=TA_RIGHT)),
-            ]
-        )
+        bal_cell = Paragraph(f"<b>{'-' if bal < 0 else ''}{inr(abs(bal))}</b>", _style("nb", fontSize=9.5, leading=12, alignment=TA_RIGHT))
+        if track_crates:
+            cb = r.get("c_bal", 0)
+            data.append(
+                [
+                    _date_cell(r["date"], date_system),
+                    part,
+                    _num(r["debit"], OWED),
+                    crate_cell(r.get("c_out", 0)),
+                    _num(r["credit"], RECV),
+                    crate_cell(r.get("c_in", 0)),
+                    bal_cell,
+                    Paragraph(f"<b>{cb}</b>", _style("ncb", fontSize=9.5, leading=12, alignment=TA_RIGHT)),
+                ]
+            )
+        else:
+            data.append([_date_cell(r["date"], date_system), part, _num(r["debit"], OWED), _num(r["credit"], RECV), bal_cell])
     if not rows:
-        data.append(["", Paragraph("No entries.", S_CELLM), "", "", ""])
+        data.append(["", Paragraph("No entries.", S_CELLM)] + blank(ncol - 2))
     else:
-        data.append(
-            [
-                Paragraph("<b>TOTAL</b>", _style("tot", fontSize=9.5, leading=12, textColor=PINE)),
-                "",
-                _num(t_debit, OWED, bold=True),
-                _num(t_credit, RECV, bold=True),
-                "" if selection else Paragraph(f"<b>{'-' if closing < 0 else ''}{inr(abs(closing))}</b>", _style("tb", fontSize=9.5, leading=12, alignment=TA_RIGHT, textColor=color)),
-            ]
-        )
-    t = Table(data, colWidths=[24 * mm, 78 * mm, 26 * mm, 26 * mm, 28 * mm], repeatRows=1)
+        closing_money = "" if selection else Paragraph(f"<b>{'-' if closing < 0 else ''}{inr(abs(closing))}</b>", _style("tb", fontSize=9.5, leading=12, alignment=TA_RIGHT, textColor=color))
+        if track_crates:
+            data.append(
+                [
+                    Paragraph("<b>TOTAL</b>", _style("tot", fontSize=9.5, leading=12, textColor=PINE)),
+                    "",
+                    _num(t_debit, OWED, bold=True),
+                    crate_cell(t_out, True),
+                    _num(t_credit, RECV, bold=True),
+                    crate_cell(t_in, True),
+                    closing_money,
+                    "" if selection else Paragraph(f"<b>{closing_crates}</b>", _style("tcb", fontSize=9.5, leading=12, alignment=TA_RIGHT, textColor=color)),
+                ]
+            )
+        else:
+            data.append([Paragraph("<b>TOTAL</b>", _style("tot", fontSize=9.5, leading=12, textColor=PINE)), "", _num(t_debit, OWED, bold=True), _num(t_credit, RECV, bold=True), closing_money])
+    widths = (
+        [20 * mm, 37 * mm, 24 * mm, 17.5 * mm, 23 * mm, 17.5 * mm, 25 * mm, 17.5 * mm]
+        if track_crates
+        else [24 * mm, 78 * mm, 26 * mm, 26 * mm, 28 * mm]
+    )
+    t = Table(data, colWidths=widths, repeatRows=head_rows)
     extra = []
+    if track_crates:
+        extra += [
+            ("SPAN", (0, 0), (0, 1)),
+            ("SPAN", (1, 0), (1, 1)),
+            ("SPAN", (2, 0), (3, 0)),
+            ("SPAN", (4, 0), (5, 0)),
+            ("SPAN", (6, 0), (7, 0)),
+            ("BACKGROUND", (0, 1), (-1, 1), PAPER),
+            ("LINEBELOW", (0, 0), (-1, 0), 0.4, LINE),
+            ("LINEBELOW", (0, 1), (-1, 1), 1.2, PINE),
+            ("ALIGN", (2, 0), (-1, 0), "CENTER"),
+            ("LEFTPADDING", (3, 0), (3, -1), 3),
+            ("RIGHTPADDING", (3, 0), (3, -1), 4),
+            ("LEFTPADDING", (5, 0), (5, -1), 3),
+            ("RIGHTPADDING", (5, 0), (5, -1), 4),
+            ("LEFTPADDING", (7, 0), (7, -1), 3),
+            ("RIGHTPADDING", (7, 0), (7, -1), 4),
+        ]
     if rows:
         last = len(data) - 1
         extra += [("BACKGROUND", (0, last), (-1, last), PAPER), ("LINEABOVE", (0, last), (-1, last), 1.2, PINE), ("SPAN", (0, last), (1, last))]
     t.setStyle(_grid(extra))
     story.append(t)
     story.append(Spacer(1, 3 * mm))
-    story.append(Paragraph("Debit: still to be paid. Credit: paid. Balance: total left to pay after that line. Amounts in Rs.", S_SMALL))
+    story.append(Paragraph(("Debit: still to be paid. Credit: paid. Balance: total left to pay after that line. Amounts in Rs. Crates: debit = given, credit = returned, balance = still with the customer." if track_crates else "Debit: still to be paid. Credit: paid. Balance: total left to pay after that line. Amounts in Rs."), S_SMALL))
 
     doc.build(story, canvasmaker=_make_canvas(latin_plain(f"{shop_name} · Statement · {customer['name']}"), "Computer generated statement.", printed_on, date_system))
     return buf.getvalue()

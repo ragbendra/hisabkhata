@@ -3,11 +3,13 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useSearchParams } from "react-router-dom";
 import BsDatePicker from "../components/BsDatePicker";
+import { CratesField, parseCrates } from "../components/CratesFields";
 import UndoBar from "../components/UndoBar";
 import { IconAlert, IconBack, IconCheck, IconClock, IconClose, IconPlus, initial } from "../components/icons";
 import { Balance, Spinner } from "../components/ui";
 import { api, NetworkError } from "../lib/api";
 import { addDays, decimals, lineAmount, nameMatches, norm, normDigits, parseNum, todayNpl } from "../lib/calc";
+import { useTrackCrates } from "../lib/crates";
 import { db } from "../lib/db";
 import { draftIsBlank, newLine, useEntryDraft, type CollectChoice, type EntryDraft, type LastSaved } from "../lib/draft";
 import { useFmt } from "../lib/format";
@@ -213,6 +215,12 @@ function EntryForm({
   const billTotal = goodLines.reduce((s, p) => s + p.amount, 0);
 
   // ---- money
+  const trackCrates = useTrackCrates();
+  const cratesBackN = trackCrates ? parseCrates(draft.cratesBack) : 0;
+  const oldCratesN = trackCrates && isNew && isOwner ? parseCrates(draft.oldCrates) : 0;
+  const cratesBad = cratesBackN === null || oldCratesN === null;
+  const cratesBack = cratesBackN ?? 0;
+  const oldCrates = oldCratesN ?? 0;
   const receivedNum = parseNum(draft.received);
   const hasReceived = Number.isFinite(receivedNum) && receivedNum > 0;
   const receivedBad = draft.received.trim() !== "" && !hasReceived;
@@ -236,7 +244,7 @@ function EntryForm({
   }
 
   const valid =
-    !!typed && (goodLines.length > 0 || hasReceived) && badLines.length === 0 && !receivedBad && !futureDateErr && (!isNew || !draft.oldBalance.trim() || Number.isFinite(oldBalNum));
+    !!typed && (goodLines.length > 0 || hasReceived || cratesBack > 0) && badLines.length === 0 && !receivedBad && !cratesBad && !futureDateErr && (!isNew || !draft.oldBalance.trim() || Number.isFinite(oldBalNum));
 
   const setLine = (key: string, patch: Partial<EntryDraft["lines"][number]>) =>
     update((d) => ({ ...d, lines: d.lines.map((l) => (l.key === key ? { ...l, ...patch } : l)) }));
@@ -265,6 +273,10 @@ function EntryForm({
         payload.new_customer.old_balance = oldBalNum.toFixed(2);
         payload.new_customer.old_balance_date = draft.oldBalanceDate;
       }
+      if (oldCrates > 0) {
+        payload.new_customer.old_crates = oldCrates;
+        payload.new_customer.old_balance_date = draft.oldBalanceDate;
+      }
     }
     if (goodLines.length) {
       payload.sale_id = ids.sale;
@@ -276,8 +288,9 @@ function EntryForm({
       }));
       if (billNo.trim()) payload.bill_no = billNo.trim();
     }
+    if (cratesBack > 0) payload.crates_back = cratesBack;
+    if (hasReceived || cratesBack > 0) payload.payment_id = ids.payment;
     if (hasReceived) {
-      payload.payment_id = ids.payment;
       payload.received_amount = received.toFixed(2);
       payload.kind = isOwner ? draft.kind : "payment";
       payload.mode = payload.kind === "discount" ? "other" : draft.mode;
@@ -419,6 +432,11 @@ function EntryForm({
                       placeholder="0"
                     />
                     {draft.oldBalance.trim() !== "" && !Number.isFinite(oldBalNum) && showErrors && <p className="mt-1 text-sm text-owed">{t("badNumber")}</p>}
+                    {trackCrates && isOwner && (
+                      <div className="mt-3">
+                        <CratesField id="oldcrates" label={t("oldCrates", { defaultValue: "Crates he already holds" })} value={draft.oldCrates} onChange={(v) => update({ oldCrates: v })} showError={showErrors} />
+                      </div>
+                    )}
                     <div className="mt-2">
                       <BsDatePicker label={t("asOf")} value={draft.oldBalanceDate} onChange={(d) => update({ oldBalanceDate: d })} yearsBack={5} />
                     </div>
@@ -629,6 +647,9 @@ function EntryForm({
           onChange={(e) => update({ received: e.target.value })}
         />
         {receivedBad && showErrors && <p className="text-sm text-owed">{t("badNumber")}</p>}
+        {trackCrates && (
+          <CratesField id="cratesback" label={t("cratesBack", { defaultValue: "Crates he gave back" })} value={draft.cratesBack} onChange={(v) => update({ cratesBack: v })} showError={showErrors} />
+        )}
         {draft.kind === "payment" || !isOwner ? (
           <div className="flex flex-wrap gap-2" role="group" aria-label={t("mode")}>
             {PAY_MODES.map((m) => (

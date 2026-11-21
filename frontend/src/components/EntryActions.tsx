@@ -1,11 +1,9 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { api } from "../lib/api";
+import { api, apiBlob } from "../lib/api";
 import { norm } from "../lib/calc";
 import { useFmt } from "../lib/format";
 import type { HistoryEntry } from "../lib/types";
-
-type PaidWith = { id: string; amount: string; mode: string; voided: boolean };
 
 /*
  * Delete and PDF buttons. Self-contained on purpose: they only use lib/api, lib/format and the
@@ -29,7 +27,7 @@ export function DeleteEntryButton({
 }: {
   entry: HistoryEntry;
   /** the payment that was received together with this bill, if any */
-  paidWith?: PaidWith;
+  paidWith?: HistoryEntry;
   onDone: () => void;
   className?: string;
 }) {
@@ -45,7 +43,9 @@ export function DeleteEntryButton({
     ? e.bill_no
       ? `${t("bill", { defaultValue: "Bill" })} ${e.bill_no}`
       : t("type_sale", { defaultValue: "Sale" })
-    : t("type_payment", { defaultValue: "Payment" });
+    : e.type === "crates"
+      ? t("cratesEntry", { defaultValue: "Crates entry" })
+      : t("type_payment", { defaultValue: "Payment" });
 
   async function remove() {
     setBusy(true);
@@ -172,3 +172,71 @@ export function DeleteCustomerButton({
     </div>
   );
 }
+
+/**
+ * Downloads a PDF from the server. On a phone that can share files this opens the share sheet,
+ * so the bill goes straight to WhatsApp, Files or Print; elsewhere it downloads the file.
+ */
+export function PdfButton({
+  path,
+  label,
+  className = "btn-secondary",
+}: {
+  path: string;
+  label: string;
+  className?: string;
+}) {
+  const { t } = useTranslation();
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function go() {
+    setBusy(true);
+    setErr(null);
+    try {
+      const { blob, filename } = await apiBlob(path);
+      const file = new File([blob], filename, { type: "application/pdf" });
+      if (navigator.canShare?.({ files: [file] })) {
+        try {
+          await navigator.share({ files: [file], title: filename });
+        } catch (x) {
+          if (!(x instanceof DOMException && x.name === "AbortError")) throw x; // closing the sheet is not an error
+        }
+      } else {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 10_000);
+      }
+    } catch (x) {
+      setErr(errText(x, t("needsConnection", { defaultValue: "Needs a connection" })));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <>
+      <button className={className} disabled={busy} onClick={() => void go()}>
+        {busy ? t("preparing", { defaultValue: "Preparing…" }) : label}
+      </button>
+      {err && <p role="alert" className="w-full basis-full text-sm text-owed">{err}</p>}
+    </>
+  );
+}
+
+/** Convenience: the two PDF buttons with their labels. */
+export const BillPdfButton = ({ saleId, className }: { saleId: string; className?: string }) => {
+  const { t } = useTranslation();
+  return <PdfButton path={`/sales/${saleId}/pdf`} label={t("billPdf", { defaultValue: "Bill (PDF)" })} className={className} />;
+};
+export const StatementPdfButton = ({ customerId, className }: { customerId: string; className?: string }) => {
+  const { t } = useTranslation();
+  return (
+    <PdfButton path={`/customers/${customerId}/statement.pdf`} label={t("statementPdf", { defaultValue: "Statement (PDF)" })} className={className} />
+  );
+};

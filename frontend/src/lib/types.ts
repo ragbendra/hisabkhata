@@ -9,7 +9,7 @@ export interface Me {
   name: string;
   login: string;
   role: Role;
-  shop: { id: string; name: string; date_system?: "bs" | "ad" };
+  shop: { id: string; name: string; date_system?: "bs" | "ad"; track_crates?: boolean };
 }
 
 export interface CustomerRow {
@@ -26,6 +26,7 @@ export interface CustomerRow {
   possible_duplicate_of: string | null;
   /** client only: customer exists only in the outbox so far */
   pending_new?: boolean;
+  crates?: number;
 }
 
 export interface BriefRow {
@@ -66,6 +67,8 @@ export interface Khata {
   owing_for: OwingGroup[];
   customers: CustomerRow[];
   possible_duplicates?: { id: string; name: string; twin_id: string; twin_name: string | null }[];
+  crates_out?: number;
+  crates_holders?: number;
 }
 
 export interface TodayEntry {
@@ -89,7 +92,7 @@ export interface SaleLineOut {
 }
 
 export interface HistoryEntry {
-  type: "opening" | "sale" | "payment" | "discount";
+  type: "opening" | "sale" | "payment" | "discount" | "crates";
   id: string;
   date: string;
   at: string;
@@ -104,11 +107,15 @@ export interface HistoryEntry {
   mode?: string;
   note?: string | null;
   /** a sale: the money received at the counter with this bill (saved in the same entry) */
-  paid_with?: { id: string; amount: string; mode: string; voided: boolean } | null;
+  paid_with?: { id: string; amount: string; mode: string; voided: boolean; crates_in?: number; crates_out?: number; crates_after?: number } | null;
   /** a payment: the bill it was received with */
   with_sale?: string | null;
   balance_before: string;
   balance_after: string;
+  crates_out?: number;
+  crates_in?: number;
+  crates_before?: number;
+  crates_after?: number;
 }
 
 export interface StillOwedRow {
@@ -188,6 +195,7 @@ export interface NewCustomerPayload {
   address?: string | null;
   old_balance?: string | null;
   old_balance_date?: string | null;
+  old_crates?: number;
 }
 
 export interface EntryPayload {
@@ -203,11 +211,13 @@ export interface EntryPayload {
   kind?: "payment" | "discount";
   note?: string | null;
   collect_by?: string | null; // omitted = keep, null = none
+  crates_back?: number;
+  crates_lent?: number;
   created_at: string;
 }
 
 export interface EntryResult {
-  customer: { id: string; name: string; balance: string; next_collection_date: string | null };
+  customer: { id: string; name: string; balance: string; next_collection_date: string | null; crates?: number };
   sale: { id: string; total: string; bill_no: string | null } | null;
   payment: { id: string; amount: string; kind: string } | null;
   duplicate: boolean;

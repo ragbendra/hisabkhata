@@ -22,6 +22,7 @@ from sqlalchemy import (
     Uuid,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.sql import expression
 
 from .db import Base
 from .timeutil import UTC, utcnow
@@ -63,6 +64,7 @@ class Shop(Base):
     address: Mapped[str | None] = mapped_column(String(300), nullable=True)
     phone: Mapped[str | None] = mapped_column(String(60), nullable=True)
     date_system: Mapped[str] = mapped_column(String(2), default="bs", server_default="bs")
+    track_crates: Mapped[bool] = mapped_column(Boolean, default=False, server_default=expression.false())
     next_bill_no: Mapped[int] = mapped_column(Integer, default=1)
     backup_email_day: Mapped[int] = mapped_column(Integer, default=0)  # 0=Sunday .. 6=Saturday
     backup_email_time: Mapped[str] = mapped_column(String(5), default="20:00")  # Nepal time HH:MM
@@ -180,9 +182,10 @@ class Payment(Base):
     id: Mapped[uuid.UUID] = pk()
     shop_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("shops.id"))
     customer_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("customers.id"))
-    kind: Mapped[str] = mapped_column(String(10), default="payment")  # payment | discount
+    kind: Mapped[str] = mapped_column(String(10), default="payment")  # payment | discount | crates
     amount: Mapped[Decimal] = mapped_column(Money)
     mode: Mapped[str] = mapped_column(String(10), default="cash")  # cash|esewa|khalti|bank|other
+    crates_in: Mapped[int] = mapped_column(Integer, default=0, server_default="0")  # handed back; negative = lent out
     paid_at: Mapped[datetime] = mapped_column(UTCDateTime)
     note: Mapped[str | None] = mapped_column(String(300), nullable=True)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime)

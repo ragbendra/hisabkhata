@@ -19,6 +19,7 @@ const TAG: Record<HistoryEntry["type"], string> = {
   sale: "bg-tint text-muted",
   payment: "bg-tint text-recv",
   discount: "bg-tint text-advance",
+  crates: "bg-tint text-brand",
   opening: "bg-warntint text-warn",
 };
 

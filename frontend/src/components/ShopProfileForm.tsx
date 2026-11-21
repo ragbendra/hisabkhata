@@ -12,6 +12,7 @@ import { setDateSystem, useDateSystem, type DateSystem } from "../lib/datesystem
 interface Profile {
   address: string | null;
   phone: string | null;
+  track_crates?: boolean;
 }
 
 export default function ShopProfileForm() {
@@ -34,6 +35,17 @@ export default function ShopProfileForm() {
     } catch (x) {
       setDateSystem(before);
       setSysErr(x instanceof Error && x.message === "Network unreachable" ? t("needsConnection", { defaultValue: "Needs a connection" }) : String(x instanceof Error ? x.message : x));
+    }
+  }
+  const [crateErr, setCrateErr] = useState<string | null>(null);
+  const trackCrates = !!q.data?.track_crates;
+  async function toggleCrates() {
+    setCrateErr(null);
+    try {
+      await api("/settings", { method: "PATCH", body: { track_crates: !trackCrates } });
+      await Promise.all([qc.invalidateQueries({ queryKey: ["shop-profile"] }), qc.invalidateQueries({ queryKey: ["settings"] }), qc.invalidateQueries({ queryKey: ["me"] })]);
+    } catch (x) {
+      setCrateErr(x instanceof Error && x.message === "Network unreachable" ? t("needsConnection", { defaultValue: "Needs a connection" }) : String(x instanceof Error ? x.message : x));
     }
   }
   if (!q.data) return null;
@@ -83,6 +95,14 @@ export default function ShopProfileForm() {
         </div>
         <p className="muted mt-1">{t("calendarHint", { defaultValue: "Dates in the app and on PDFs use this calendar. Saved dates do not change." })}</p>
         {sysErr && <p role="alert" className="text-sm text-owed">{sysErr}</p>}
+      </div>
+      <div>
+        <span className="label">{t("cratesTrack", { defaultValue: "Crates" })}</span>
+        <button type="button" role="switch" aria-checked={trackCrates} className={`chip ${trackCrates ? "chip-on" : ""}`} onClick={() => void toggleCrates()}>
+          {trackCrates ? t("cratesTrackOn", { defaultValue: "Tracking crates: on" }) : t("cratesTrackOff", { defaultValue: "Tracking crates: off" })}
+        </button>
+        <p className="muted mt-1">{t("cratesTrackHint", { defaultValue: "Adds crates given, returned and still with each customer, in the ledger, the Khata and the PDF." })}</p>
+        {crateErr && <p role="alert" className="text-sm text-owed">{crateErr}</p>}
       </div>
       {err && <p role="alert" className="text-sm text-owed">{err}</p>}
       {msg && <p role="status" className="text-sm text-recv">{msg}</p>}

@@ -31,6 +31,9 @@ export interface EntryDraft {
   billNoTouched: boolean;
   date: string | null; // null = today
   received: string;
+  /** crates he hands back in this visit, and crates he already holds from before (new customer) */
+  cratesBack: string;
+  oldCrates: string;
   mode: PayMode;
   kind: "payment" | "discount";
   note: string;
@@ -75,6 +78,8 @@ export function freshDraft(): EntryDraft {
     billNoTouched: false,
     date: null,
     received: "",
+    cratesBack: "",
+    oldCrates: "",
     mode: "cash",
     kind: "payment",
     note: "",
@@ -88,6 +93,7 @@ export function draftIsBlank(d: EntryDraft): boolean {
     !d.customerText.trim() &&
     !d.customerId &&
     !d.received.trim() &&
+    !(d.cratesBack ?? "").trim() &&
     d.lines.every((l) => !l.fruit.trim() && !l.kg.trim() && !l.rate.trim() && !l.crates.trim())
   );
 }

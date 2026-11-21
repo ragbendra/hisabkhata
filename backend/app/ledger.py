@@ -5,10 +5,10 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, time
 from decimal import ROUND_HALF_UP, Decimal
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
-from .models import AuditLog, Customer, Opening, Payment, Sale, User
+from .models import AuditLog, Customer, Opening, Payment, Sale, SaleLine, User
 from .timeutil import NPT, aware, npl_date
 
 ZERO = Decimal("0")
@@ -73,8 +73,14 @@ def payment_snapshot(p: Payment) -> dict:
         "mode": p.mode,
         "paid_at": aware(p.paid_at).isoformat(),
         "note": p.note,
+        "crates_in": p.crates_in,
         "voided": p.voided_at is not None,
     }
+
+
+def sale_crates(s: Sale) -> int:
+    """Crates handed over with a bill: the sum of the crates typed on its fruit lines."""
+    return sum((ln.crates or 0) for ln in s.lines)
 
 
 # ---------------------------------------------------------------- bulk state
@@ -101,10 +107,17 @@ class CustState:
     last_activity: date | None = None
     items: list[Item] = field(default_factory=list)
     credits: Decimal = ZERO  # payments + discounts + negative openings
+    crates_given: int = 0  # crates handed over with bills
+    crates_back: int = 0  # crates returned (a negative entry is crates lent without a bill)
 
     @property
     def balance(self) -> Decimal:
         return self.opening + self.sold - self.received - self.discounts
+
+    @property
+    def crates(self) -> int:
+        """Crates the customer still holds. Negative: he returned more than we recorded."""
+        return self.crates_given - self.crates_back
 
 
 def _midnight(d: date) -> datetime:
@@ -151,12 +164,25 @@ def bulk_state(db: Session, shop_id, customer_id: uuid.UUID | None = None) -> di
         s.items.append(Item(bdate, aware(created), total, "sale", sid, bill_no))
 
     rows = db.execute(
-        select(Payment.customer_id, Payment.kind, Payment.amount, Payment.paid_at).where(
+        select(Sale.customer_id, func.coalesce(func.sum(SaleLine.crates), 0))
+        .join(SaleLine, SaleLine.sale_id == Sale.id)
+        .where(Sale.shop_id == shop_id, Sale.voided_at.is_(None), *([Sale.customer_id == customer_id] if customer_id else []))
+        .group_by(Sale.customer_id)
+    )
+    for cid, crates in rows:
+        st(cid).crates_given += int(crates or 0)
+
+    rows = db.execute(
+        select(Payment.customer_id, Payment.kind, Payment.amount, Payment.paid_at, Payment.crates_in).where(
             Payment.shop_id == shop_id, Payment.voided_at.is_(None), *([Payment.customer_id == customer_id] if customer_id else [])
         )
     )
-    for cid, kind, amount, paid_at in rows:
+    for cid, kind, amount, paid_at, crates_in in rows:
         s = st(cid)
+        s.crates_back += int(crates_in or 0)
+        if kind == "crates":  # crates only: no money moved
+            _touch(s, npl_date(paid_at))
+            continue
         s.credits += amount
         _touch(s, npl_date(paid_at))
         if kind == "discount":
@@ -232,7 +258,7 @@ def paired_payment(db: Session, sale: Sale) -> Payment | None:
         select(Payment).where(
             Payment.shop_id == sale.shop_id,
             Payment.customer_id == sale.customer_id,
-            Payment.kind == "payment",
+            Payment.kind.in_(("payment", "crates")),
             Payment.created_by == sale.created_by,
         )
     ):
@@ -241,7 +267,6 @@ def paired_payment(db: Session, sale: Sale) -> Payment | None:
     return None
 
 
-_ORDER = {"opening": 0, "sale": 1, "payment": 2, "discount": 2}
 
 
 def history(db: Session, shop_id, customer_id) -> list[dict]:
@@ -261,6 +286,9 @@ def history(db: Session, shop_id, customer_id) -> list[dict]:
                 "entered_by": users.get(o.created_by),
                 "entered_at": aware(o.created_at).isoformat(),
                 "_delta": o.amount,
+                "_cdelta": 0,
+                "crates_out": 0,
+                "crates_in": 0,
                 "_key": (o.as_of_date, _midnight(o.as_of_date), 0),
             }
         )
@@ -279,6 +307,8 @@ def history(db: Session, shop_id, customer_id) -> list[dict]:
                 "amount": money(s.total),
                 "bill_no": s.bill_no,
                 "lines": snap["lines"],
+                "crates_out": sale_crates(s),
+                "crates_in": 0,
                 "voided": s.voided_at is not None,
                 "void_reason": s.void_reason,
                 "entered_by": users.get(s.created_by),
@@ -286,6 +316,7 @@ def history(db: Session, shop_id, customer_id) -> list[dict]:
                 "entered_at": aware(s.created_at).isoformat(),
                 "received_at_server": aware(s.server_received_at).isoformat(),
                 "_delta": s.total if s.voided_at is None else ZERO,
+                "_cdelta": sale_crates(s) if s.voided_at is None else 0,
                 "_key": (s.bill_date, aware(s.created_at), 1),
             }
         )
@@ -294,40 +325,55 @@ def history(db: Session, shop_id, customer_id) -> list[dict]:
     for p in pays:
         entries.append(
             {
-                "type": p.kind,  # payment | discount
+                "type": p.kind,  # payment | discount | crates
                 "id": str(p.id),
                 "date": npl_date(p.paid_at).isoformat(),
                 "at": aware(p.paid_at).isoformat(),
                 "amount": money(p.amount),
                 "mode": p.mode,
                 "note": p.note,
+                "crates_out": max(-p.crates_in, 0),  # crates lent without a bill
+                "crates_in": max(p.crates_in, 0),
                 "voided": p.voided_at is not None,
                 "void_reason": p.void_reason,
                 "entered_by": users.get(p.created_by),
                 "entered_by_id": str(p.created_by),
                 "entered_at": aware(p.created_at).isoformat(),
                 "received_at_server": aware(p.server_received_at).isoformat(),
-                "_delta": -p.amount if p.voided_at is None else ZERO,
+                "_delta": (ZERO if p.kind == "crates" else -p.amount) if p.voided_at is None else ZERO,
+                "_cdelta": -p.crates_in if p.voided_at is None else 0,
                 "_key": (npl_date(p.paid_at), aware(p.paid_at), 2),
             }
         )
 
     entries.sort(key=lambda e: e["_key"])
     running = ZERO
+    crates = 0
     for e in entries:
         e["balance_before"] = money(running)
         running += e.pop("_delta")
         e["balance_after"] = money(running)
+        e["crates_before"] = crates
+        crates += e.pop("_cdelta")
+        e["crates_after"] = crates
         e.pop("_key")
 
     # A bill and the money received with it are saved in one go (same person, same moment).
     # Link them, so the ledger can show "bill 10,000, paid 3,000 now" as a single line.
     sale_at = {(e["entered_by_id"], e["entered_at"]): e for e in entries if e["type"] == "sale"}
     for e in entries:
-        if e["type"] != "payment":
+        if e["type"] not in ("payment", "crates"):
             continue
         s = sale_at.get((e["entered_by_id"], e["entered_at"]))
         if s is not None and "paid_with" not in s:
-            s["paid_with"] = {"id": e["id"], "amount": e["amount"], "mode": e["mode"], "voided": e["voided"]}
+            s["paid_with"] = {
+                "id": e["id"],
+                "amount": e["amount"],
+                "mode": e["mode"],
+                "voided": e["voided"],
+                "crates_in": e["crates_in"],
+                "crates_out": e["crates_out"],
+                "crates_after": e["crates_after"],  # crates balance after the bill AND this
+            }
             e["with_sale"] = s["id"]
     return entries

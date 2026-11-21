@@ -83,7 +83,7 @@ def test_delete_entry_removes_row_and_is_audited(owner):
     # deleting the bill takes the money received with it, but not the later instalment
     d = owner.delete(f"/sales/{r['sale']['id']}")
     assert d.status_code == 200 and len(d.json()["deleted"]["payments"]) == 1
-    hist = owner.get(f"/customers/{cid}/history").json()
+    hist = owner.get(f"/customers/{cid}/history?order=asc").json()
     assert [h["type"] for h in hist] == ["payment"] and bal(owner, cid) == -100
     assert owner.delete(f"/sales/{r['sale']['id']}").status_code == 404
     # a payment can be deleted on its own
@@ -185,7 +185,7 @@ def test_helper_limits(owner, helper):
 
     ok = helper.post("/entries", entry(customer=cid, lines=[("Apple", 1, 100)], received=50))
     assert ok.status_code == 200
-    hist = owner.get(f"/customers/{cid}/history").json()
+    hist = owner.get(f"/customers/{cid}/history?order=asc").json()
     assert {h["entered_by"] for h in hist} == {"Owner", "Helper"}  # each entry shows who entered it
 
     assert helper.post("/entries", entry(customer=cid, received=10, kind="discount")).status_code == 403
@@ -630,3 +630,60 @@ def test_feedback_reaches_the_admin_and_expired_shops_can_still_write(owner):
     assert owner.post("/feedback", {"kind": "problem", "message": "PDF will not download", "contact": "9800000000"}).status_code == 201
     assert owner.post("/feedback", {"kind": "problem", "message": "x"}).status_code == 422
     assert owner.post("/feedback", {"kind": "nonsense", "message": "long enough text"}).status_code == 422
+
+
+def test_crates_given_returned_and_balance(owner):
+    from conftest import uid
+
+    assert owner.patch("/settings", {"track_crates": True}).json()["track_crates"] is True
+    assert owner.get("/auth/me").json()["shop"]["track_crates"] is True
+
+    body = entry(new="Hari Traders", lines=[("Apple", 100, 100)])
+    body["lines"][0]["crates"] = 10
+    r = owner.post("/entries", body).json()
+    cid = r["customer"]["id"]
+    assert r["customer"]["crates"] == 10 and r["customer"]["balance"] == "10000.00"
+
+    # crates come back, no money
+    back = owner.post("/entries", {"customer_id": cid, "payment_id": uid(), "crates_back": 4}).json()
+    assert back["customer"]["crates"] == 6 and back["customer"]["balance"] == "10000.00"  # money untouched
+    assert back["payment"]["kind"] == "crates"
+
+    # a new bill of 5 crates and 2 empty crates handed back, in one visit, with 3000 paid
+    b2 = entry(customer=cid, lines=[("Mango", 50, 100)], received=3000, crates_back=2)
+    b2["lines"][0]["crates"] = 5
+    r2 = owner.post("/entries", b2).json()
+    assert r2["customer"]["crates"] == 9 and r2["customer"]["balance"] == "12000.00"
+
+    hist = owner.get(f"/customers/{cid}/history?order=asc").json()
+    sale2 = [e for e in hist if e["type"] == "sale"][-1]
+    assert sale2["crates_out"] == 5 and sale2["paid_with"]["crates_in"] == 2
+    assert [e["crates_after"] for e in hist] == [10, 6, 11, 9]  # running crate balance, row by row
+    assert sale2["paid_with"]["crates_after"] == 9  # the bill and its crates-back are one line: 9 with him after both
+
+    # the customer list and the khata report the crates still out
+    assert [c for c in owner.get("/customers").json() if c["id"] == cid][0]["crates"] == 9
+    k = owner.get("/khata").json()
+    assert k["crates_out"] == 9 and k["crates_holders"] == 1
+
+    # deleting the crates-return entry puts the crates back on his account
+    pid = back["payment"]["id"]
+    assert owner.delete(f"/payments/{pid}").status_code == 200
+    assert owner.get(f"/customers/{cid}").json()["crates"] == 13
+
+    # a customer who already holds crates from before the app
+    old = owner.post("/entries", {"new_customer": {"id": uid(), "name": "Old Crate Man", "old_crates": 12}, "payment_id": uid(), "crates_lent": 0, "lines": [], "received_amount": "100"}).json()
+    assert old["customer"]["crates"] == 12
+    oc = old["customer"]["id"]
+    hist_old = owner.get(f"/customers/{oc}/history?order=asc").json()
+    assert hist_old[0]["type"] == "crates" and hist_old[0]["crates_out"] == 12 and hist_old[0]["crates_after"] == 12
+
+    # the statement PDF carries the crate columns
+    pdf = owner.get(f"/customers/{cid}/statement.pdf")
+    assert pdf.status_code == 200 and pdf.content[:4] == b"%PDF"
+
+
+def test_crates_only_entry_needs_a_payment_id_and_no_crates_is_rejected(owner):
+    cid = owner.post("/entries", entry(new="Sita", lines=[("Apple", 10, 100)])).json()["customer"]["id"]
+    assert owner.post("/entries", {"customer_id": cid, "crates_back": 3}).status_code == 422  # no payment_id
+    assert owner.post("/entries", {"customer_id": cid, "payment_id": "00000000-0000-4000-8000-000000000001"}).status_code == 422  # nothing to save
