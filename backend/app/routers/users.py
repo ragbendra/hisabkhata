@@ -3,10 +3,11 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..db import get_db
+from ..devices import MAX_HELPERS
 from ..deps import owner_only
 from ..models import PasswordReset, User, UserSession
 from ..security import hash_password
@@ -46,6 +47,9 @@ def list_users(owner: User = Depends(owner_only), db: Session = Depends(get_db))
 @router.post("", status_code=201)
 def create_helper(body: HelperIn, owner: User = Depends(owner_only), db: Session = Depends(get_db)):
     login = body.login.strip().lower()
+    helpers = db.scalar(select(func.count()).select_from(User).where(User.shop_id == owner.shop_id, User.role == "helper"))
+    if helpers >= MAX_HELPERS:
+        raise HTTPException(400, f"You can have at most {MAX_HELPERS} helper logins. Delete one first.")
     if db.scalar(select(User).where(User.login == login)):
         raise HTTPException(409, "That login is already taken")
     u = User(

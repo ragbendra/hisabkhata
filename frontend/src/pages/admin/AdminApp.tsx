@@ -65,8 +65,9 @@ export default function AdminApp() {
       admin={me.data}
       onSignOut={async () => {
         await api("/admin/logout", { body: {} }).catch(() => undefined);
-        qc.clear();
-        await qc.invalidateQueries();
+        // drop everything cached for the admin, then say "nobody is signed in" so the login page shows at once
+        qc.removeQueries();
+        qc.setQueryData(["admin-me"], null);
       }}
     />
   );

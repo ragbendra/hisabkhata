@@ -3,6 +3,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import DeleteHelperButton from "../components/DeleteHelperButton";
+import DevicesList from "../components/DevicesList";
 import FeedbackForm from "../components/FeedbackForm";
 import PasswordInput from "../components/PasswordInput";
 import ShopProfileForm from "../components/ShopProfileForm";
@@ -156,6 +157,9 @@ export default function SettingsPage() {
               <DeleteHelperButton id={u.id} name={u.name} onDone={() => void qc.invalidateQueries({ queryKey: ["users"] })} />
             </div>
           ))}
+          {(users.data?.filter((u) => u.role === "helper").length ?? 0) >= 3 ? (
+            <p className="muted border-t border-line pt-3">{t("helpersMax")}</p>
+          ) : (
           <form
             className="space-y-2 border-t border-line pt-3"
             onSubmit={(e) => {
@@ -168,6 +172,7 @@ export default function SettingsPage() {
             <PasswordInput className="field" placeholder={t("password")} autoComplete="new-password" value={helper.password} onChange={(e) => setHelper({ ...helper, password: e.target.value })} required minLength={6} />
             <button className="btn-primary w-full">{t("addHelper")}</button>
           </form>
+          )}
         </div>
       </Section>
 
@@ -182,6 +187,12 @@ export default function SettingsPage() {
       </Section>
 
       <FeedbackForm />
+
+      <Section title={t("devicesTitle")}>
+        <div className="card">
+          <DevicesList />
+        </div>
+      </Section>
 
       <Section title={t("account")}>
         <button className="btn-secondary w-full" onClick={() => void logout()}>{t("signOut")}</button>

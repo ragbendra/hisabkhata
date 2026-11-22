@@ -1,9 +1,10 @@
 import { useState, type FormEvent } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
+import DevicePicker from "../components/DevicePicker";
 import { LangToggle } from "../components/Layout";
 import PasswordInput from "../components/PasswordInput";
-import { api } from "../lib/api";
+import { api, ApiError } from "../lib/api";
 import { queryClient } from "../lib/queryClient";
 import { flushOutbox } from "../lib/sync";
 import { RequestAccessLink } from "./RequestAccess";
@@ -34,6 +35,7 @@ export default function LoginPage({ offlineNotice }: { offlineNotice?: string })
   const [busy, setBusy] = useState(false);
   const [forgot, setForgot] = useState(false);
   const [sent, setSent] = useState(false);
+  const [pick, setPick] = useState(false); // this login is already on 3 devices
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -49,6 +51,10 @@ export default function LoginPage({ offlineNotice }: { offlineNotice?: string })
         void flushOutbox();
       }
     } catch (err) {
+      if (err instanceof ApiError && err.status === 409) {
+        setPick(true);
+        return;
+      }
       setError(err instanceof Error && err.message !== "Network unreachable" ? err.message : t("offlineNoData"));
     } finally {
       setBusy(false);
@@ -58,6 +64,17 @@ export default function LoginPage({ offlineNotice }: { offlineNotice?: string })
   return (
     <Shell>
       {offlineNotice && <p className="mb-3 rounded bg-warntint p-2 text-sm text-warn">{offlineNotice}</p>}
+      {pick ? (
+        <DevicePicker
+          login={login}
+          password={password}
+          onCancel={() => setPick(false)}
+          onDone={async () => {
+            await queryClient.invalidateQueries();
+            void flushOutbox();
+          }}
+        />
+      ) : (
       <form onSubmit={submit} className="space-y-3">
         <h2 className="text-lg font-semibold">{forgot ? t("resetTitle") : t("signIn")}</h2>
         <div>
@@ -88,6 +105,7 @@ export default function LoginPage({ offlineNotice }: { offlineNotice?: string })
         </button>
         {!forgot && <RequestAccessLink />}
       </form>
+      )}
     </Shell>
   );
 }

@@ -378,6 +378,14 @@ export const en = {
   cratesOutTotal: "Crates out: {{n}} with {{c}} customers",
   cratesEntry: "Crates entry",
   type_crates: "Crates",
+  devicesTitle: "Where you are signed in",
+  devicesHelp: "You can be signed in on 3 devices at a time. A device you do not use for 7 days is signed out.",
+  devicesThis: "This device",
+  devicesLastUsed: "Last used",
+  devicesSignOut: "Sign out",
+  devicesFullTitle: "You are signed in on 3 devices",
+  devicesFullHelp: "Sign one of them out to continue on this device.",
+  helpersMax: "You have 3 helper logins, the most allowed. Delete one to add another.",
 };
 
 export type Messages = typeof en;

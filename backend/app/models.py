@@ -20,6 +20,7 @@ from sqlalchemy import (
     Text,
     TypeDecorator,
     Uuid,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import expression
@@ -87,6 +88,11 @@ class User(Base):
     role: Mapped[str] = mapped_column(String(10))  # owner | helper
     disabled_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
 
+    # one owner per shop, enforced by the database itself
+    __table_args__ = (
+        Index("uq_one_owner_per_shop", "shop_id", unique=True, postgresql_where=text("role = 'owner'"), sqlite_where=text("role = 'owner'")),
+    )
+
 
 class UserSession(Base):
     __tablename__ = "sessions"
@@ -95,6 +101,10 @@ class UserSession(Base):
     token_hash: Mapped[str] = mapped_column(String(64), unique=True)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
     expires_at: Mapped[datetime] = mapped_column(UTCDateTime)
+    # one row = one signed-in device. last_seen_at drives the 7-day idle sign-out.
+    last_seen_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
+    user_agent: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    ip: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
 
 class PasswordReset(Base):

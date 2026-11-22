@@ -4,7 +4,9 @@ from sqlalchemy.orm import Session
 
 from .config import settings
 from .db import get_db
+from .devices import is_live, touch
 from .models import AdminSession, PlatformAdmin, Shop, User, UserSession
+from .ratelimit import client_ip
 from .security import hash_token
 from .subscription import shop_state
 from .timeutil import aware, utcnow
@@ -15,11 +17,13 @@ def _signed_in(request: Request, db: Session) -> tuple[User, str]:
     if not token:
         raise HTTPException(401, "Not signed in")
     sess = db.scalar(select(UserSession).where(UserSession.token_hash == hash_token(token)))
-    if sess is None or aware(sess.expires_at) < utcnow():
+    if sess is None or not is_live(sess):
         raise HTTPException(401, "Session expired")
     user = db.get(User, sess.user_id)
     if user is None or user.disabled_at is not None:
         raise HTTPException(401, "Account disabled")
+    touch(db, sess, client_ip(request))
+    request.state.session_id = sess.id
     state = shop_state(db.get(Shop, user.shop_id))
     if state == "suspended":
         raise HTTPException(403, "This shop is suspended. Please contact Hisab support.")
