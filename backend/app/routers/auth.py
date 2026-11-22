@@ -9,10 +9,11 @@ from sqlalchemy.orm import Session
 from ..config import settings
 from ..db import get_db
 from ..deps import current_user
-from ..devices import MAX_DEVICES, device_out, live_sessions
+from ..devices import MAX_DEVICES, device_label, device_out, live_sessions
 from ..emailer import send_email
 from ..models import PasswordReset, Shop, User, UserSession
 from ..ratelimit import client_ip, limiter, too_many
+from ..security_log import record
 from ..subscription import shop_state, subscription_payload
 from ..security import hash_password, hash_token, new_token, verify_password
 from ..timeutil import aware, utcnow
@@ -56,9 +57,14 @@ def _check_login(body: LoginIn, request: Request, db: Session) -> User:
     user = db.scalar(select(User).where(User.login == body.login.strip().lower()))
     if user is None or user.disabled_at is not None or not verify_password(user.password_hash, body.password):
         limiter.add(key, 900)
+        why = "unknown login" if user is None else ("account disabled" if user.disabled_at is not None else "wrong password")
+        record(db, "login_failed", request, user=user, login=body.login.strip().lower(), detail=why)
+        db.commit()
         raise HTTPException(401, "Wrong login or password")
     limiter.clear(key)
     if shop_state(db.get(Shop, user.shop_id)) == "suspended":
+        record(db, "login_failed", request, user=user, detail="shop suspended")
+        db.commit()
         raise HTTPException(403, "This shop is suspended. Please contact Hisab support.")
     return user
 
@@ -75,7 +81,8 @@ def login(body: LoginIn, request: Request, response: Response, db: Session = Dep
     if len(others) >= MAX_DEVICES:
         pick = next((s for s in others if s.id == body.replace_session_id), None) if body.replace_session_id else None
         if pick is None:
-            db.commit()  # only the expired ones were removed
+            record(db, "device_limit", request, user=user)
+            db.commit()  # records the refusal, and removes the expired devices
             raise HTTPException(409, f"You are signed in on {MAX_DEVICES} devices. Sign out one to continue.")
     if mine:
         db.delete(mine)
@@ -93,6 +100,7 @@ def login(body: LoginIn, request: Request, response: Response, db: Session = Dep
             ip=client_ip(request)[:64],
         )
     )
+    record(db, "login_ok", request, user=user, detail=f"replaced a device: {device_label(pick.user_agent)}" if pick else None)
     db.commit()
     response.set_cookie(
         settings.cookie_name,
@@ -130,6 +138,7 @@ def sign_out_device(session_id: UUID, request: Request, response: Response, user
         raise HTTPException(404, "Not found")
     if s.id == getattr(request.state, "session_id", None):
         response.delete_cookie(settings.cookie_name, path="/")
+    record(db, "device_signout", request, user=user, detail=device_label(s.user_agent))
     db.delete(s)
     db.commit()
     return {"ok": True}

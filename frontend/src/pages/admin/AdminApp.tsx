@@ -3,7 +3,10 @@ import PasswordInput from "../../components/PasswordInput";
 import { useState, type FormEvent } from "react";
 import { Spinner } from "../../components/ui";
 import { ApiError, api } from "../../lib/api";
+import Dashboard from "./Dashboard";
+import SecurityTab from "./Security";
 import ShopPanel from "./ShopPanel";
+import { UsersTab } from "./Users";
 import { ago, errMsg, fmtDate, LinkBox, StatePill, type ShopRow } from "./shared";
 
 /*
@@ -65,9 +68,10 @@ export default function AdminApp() {
       admin={me.data}
       onSignOut={async () => {
         await api("/admin/logout", { body: {} }).catch(() => undefined);
-        // drop everything cached for the admin, then say "nobody is signed in" so the login page shows at once
-        qc.removeQueries();
+        // Say "nobody is signed in" first, on the query the page is watching, so the login page shows at once.
+        // (Removing that query from the cache would leave the page watching a query that no longer exists.)
         qc.setQueryData(["admin-me"], null);
+        qc.removeQueries({ predicate: (q) => q.queryKey[0] !== "admin-me" });
       }}
     />
   );
@@ -130,15 +134,15 @@ function AdminLogin({ offline }: { offline: boolean }) {
 
 // ---------------------------------------------------------------- shell with tabs
 
-type Tab = "shops" | "requests" | "feedback" | "invites" | "settings";
+type Tab = "dashboard" | "shops" | "users" | "security" | "requests" | "feedback" | "invites" | "settings";
 
 function AdminHome({ admin, onSignOut }: { admin: Admin; onSignOut: () => void }) {
-  const [tab, setTab] = useState<Tab>("shops");
+  const [tab, setTab] = useState<Tab>("dashboard");
   const reqs = useQuery({ queryKey: ["admin-requests"], queryFn: () => api<RequestRow[]>("/admin/requests?status=new"), refetchInterval: 60_000, refetchOnMount: "always" });
   const waiting = reqs.data?.length ?? 0;
   const fb = useQuery({ queryKey: ["admin-feedback"], queryFn: () => api<FeedbackRow[]>("/admin/feedback?status=new"), refetchInterval: 60_000, refetchOnMount: "always" });
   const unread = fb.data?.length ?? 0;
-  const tabs: [Tab, string][] = [["shops", "Shops"], ["requests", waiting ? `Requests (${waiting})` : "Requests"], ["feedback", unread ? `Feedback (${unread})` : "Feedback"], ["invites", "Invites"], ["settings", "Settings"]];
+  const tabs: [Tab, string][] = [["dashboard", "Dashboard"], ["shops", "Shops"], ["users", "Users"], ["security", "Security"], ["requests", waiting ? `Requests (${waiting})` : "Requests"], ["feedback", unread ? `Feedback (${unread})` : "Feedback"], ["invites", "Invites"], ["settings", "Settings"]];
   return (
     <div className="mx-auto min-h-screen max-w-2xl px-4 pb-16 lg:max-w-6xl">
       <header className="flex items-center justify-between py-4">
@@ -157,7 +161,10 @@ function AdminHome({ admin, onSignOut }: { admin: Admin; onSignOut: () => void }
           </button>
         ))}
       </nav>
+      {tab === "dashboard" && <Dashboard onOpenSecurity={() => setTab("security")} />}
       {tab === "shops" && <ShopsTab />}
+      {tab === "users" && <UsersTab />}
+      {tab === "security" && <SecurityTab />}
       {tab === "requests" && <RequestsTab rows={reqs.data} loading={reqs.isLoading} />}
       {tab === "feedback" && <FeedbackTab rows={fb.data} loading={fb.isLoading} />}
       {tab === "invites" && <InvitesTab />}

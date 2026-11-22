@@ -17,6 +17,7 @@ from .db import get_db
 from .jobs import run_weekly_email
 from .routers import (
     admin,
+    admin_security,
     auth,
     bills,
     corrections,
@@ -90,7 +91,7 @@ async def require_app_header(request: Request, call_next):
 api = APIRouter(prefix="/api")
 for module in (
     auth, users, entries, customers, corrections, fruit_names, khata, reports, settings_router, export,
-    bills, admin, public, feedback,
+    bills, admin, admin_security, public, feedback,
 ):
     api.include_router(module.router)
 

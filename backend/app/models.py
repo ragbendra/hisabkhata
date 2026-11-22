@@ -327,3 +327,35 @@ class SubscriptionPayment(Base):
     extended_to: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
     note: Mapped[str | None] = mapped_column(String(300), nullable=True)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+
+
+class SecurityEvent(Base):
+    """Who signed in or tried to, from where. Kept 90 days, then deleted. Read by the platform admin."""
+
+    __tablename__ = "security_events"
+    id: Mapped[uuid.UUID] = pk()
+    at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, index=True)
+    # login_ok | login_failed | device_limit | device_signout | export_full
+    kind: Mapped[str] = mapped_column(String(20))
+    shop_id: Mapped[uuid.UUID | None] = mapped_column(UUIDPK, nullable=True, index=True)
+    user_id: Mapped[uuid.UUID | None] = mapped_column(UUIDPK, nullable=True, index=True)
+    login: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    ip: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    user_agent: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    detail: Mapped[str | None] = mapped_column(String(300), nullable=True)
+
+
+class SecurityFlag(Base):
+    """Something worth a look, found by app/security_log.py. The admin marks it reviewed. Never blocks anyone."""
+
+    __tablename__ = "security_flags"
+    id: Mapped[uuid.UUID] = pk()
+    key: Mapped[str] = mapped_column(String(200), unique=True)  # the same finding is not flagged twice
+    kind: Mapped[str] = mapped_column(String(20))
+    severity: Mapped[str] = mapped_column(String(10), default="warning")  # info | warning | high
+    shop_id: Mapped[uuid.UUID | None] = mapped_column(UUIDPK, nullable=True, index=True)
+    user_id: Mapped[uuid.UUID | None] = mapped_column(UUIDPK, nullable=True)
+    title: Mapped[str] = mapped_column(String(200))
+    detail: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, index=True)
+    reviewed_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)

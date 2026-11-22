@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Modal, Spinner } from "../../components/ui";
 import { api } from "../../lib/api";
+import { ShopActivityModal } from "./Users";
 import { copyText, errMsg, fmtDate, ago, StatePill, type ShopDetail } from "./shared";
 
 const MODES = ["esewa", "khalti", "bank", "cash", "other"];
@@ -14,6 +15,7 @@ export default function ShopPanel({ shopId, onClose }: { shopId: string; onClose
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [link, setLink] = useState<string | null>(null);
+  const [activity, setActivity] = useState(false);
 
   const refresh = () => {
     void qc.invalidateQueries({ queryKey: ["admin-shop", shopId] });
@@ -59,6 +61,8 @@ export default function ShopPanel({ shopId, onClose }: { shopId: string; onClose
             <span className="muted">Customers · bills · users</span>
             <span>{s.customers} · {s.bills} · {s.users}</span>
           </div>
+          <button className="btn-secondary w-full" onClick={() => setActivity(true)}>Devices and activity</button>
+          {activity && <ShopActivityModal shopId={s.id} onClose={() => setActivity(false)} />}
           {msg && <p role="status" className="rounded-xl bg-tint p-2 text-recv">{msg}</p>}
           {err && <p role="alert" className="rounded-xl bg-owedtint p-2 text-owed">{err}</p>}
 
