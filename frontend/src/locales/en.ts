@@ -307,7 +307,7 @@ export const en = {
   inviteInvalidTitle: "This link does not work",
   joinTitle: "Create your account",
   joinTrial: "Your free trial is {{days}} days. No payment is needed to start.",
-  ledgerHintShort: "Latest entries. Older months are folded; tap one to open it.",
+  ledgerHintShort: "Older months are folded at the top; tap one to open it.",
   min8: "at least 8 characters",
   noArchived: "Nothing here.",
   notInTotal: "not in total",
@@ -385,6 +385,7 @@ export const en = {
   devicesSignOut: "Sign out",
   devicesFullTitle: "You are signed in on 3 devices",
   devicesFullHelp: "Sign one of them out to continue on this device.",
+  backToLedger: "Back to ledger",
   helpersMax: "You have 3 helper logins, the most allowed. Delete one to add another.",
 };
 

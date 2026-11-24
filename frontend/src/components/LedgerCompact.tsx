@@ -15,7 +15,7 @@ import { Spinner } from "./ui";
  *   <LedgerCompact entries={...} loading={...} focusSale={focusSale} onOpen={setOpen}
  *                  canSelect={owner} onChanged={invalidate} />
  *
- * - The latest RECENT lines are shown in full. Everything older is folded into one line per month
+ * - Oldest first. The latest RECENT lines (at the bottom) are shown in full. Everything older is folded into one line per month
  *   (with that month's debit and credit); tap a month to open it. A long history stays one screen.
  * - Owners get "Select": tick bills, payments and old balances (or a whole month) and delete them together.
  *   A bill and the money taken with it are one line and are selected together.
@@ -108,9 +108,11 @@ export default function LedgerCompact({
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  const newest = useMemo(() => buildRows(entries).reverse(), [entries]);
-  const recent = newest.slice(0, RECENT);
-  const older = newest.slice(RECENT);
+  // oldest first, like the paper ledger: old months folded at the top, the latest lines at the bottom
+  const rows = useMemo(() => buildRows(entries), [entries]);
+  const splitAt = Math.max(0, rows.length - RECENT);
+  const older = useMemo(() => rows.slice(0, splitAt), [rows, splitAt]);
+  const recent = rows.slice(splitAt);
 
   const months = useMemo(() => {
     const groups: { key: string; label: string; rows: Row[]; debit: number; credit: number; cOut: number; cIn: number }[] = [];
@@ -133,7 +135,7 @@ export default function LedgerCompact({
   }, [older]);
 
   const keysOf = (rows: Row[]) => rows.flatMap(rowKeys);
-  const allKeys = useMemo(() => keysOf(newest), [newest]);
+  const allKeys = useMemo(() => keysOf(rows), [rows]);
   const toggleRows = (rows: Row[]) => {
     const ks = keysOf(rows);
     setPicked((p) => {
@@ -242,7 +244,7 @@ export default function LedgerCompact({
   return (
     <section>
       <div className="mb-2 flex items-center justify-between gap-2">
-        <p className="muted">{t("ledgerHintShort", { defaultValue: "Latest entries. Older months are folded; tap one to open it." })}</p>
+        <p className="muted">{t("ledgerHintShort", { defaultValue: "Older months are folded at the top; tap one to open it." })}</p>
         {canSelect && entries.length > 0 && (
           <button className="min-h-touch shrink-0 text-sm text-brand underline" onClick={() => (selecting ? stop() : setSelecting(true))}>
             {selecting ? t("cancel", { defaultValue: "Cancel" }) : t("select", { defaultValue: "Select" })}
@@ -281,7 +283,6 @@ export default function LedgerCompact({
               )}
             </thead>
             <tbody>
-              {recent.map(line)}
               {months.map((g) => (
                 <MonthRows
                   key={g.key}
@@ -307,12 +308,13 @@ export default function LedgerCompact({
                   {g.rows.map(line)}
                 </MonthRows>
               ))}
+              {recent.map(line)}
             </tbody>
           </table>
         </div>
       </div>
 
-      {!loading && newest.length === 0 && <p className="muted mt-3">{t("noEntries")}</p>}
+      {!loading && rows.length === 0 && <p className="muted mt-3">{t("noEntries")}</p>}
       <p className="muted mt-2 text-xs">{t("ledgerUnit")}</p>
 
       {selecting && count > 0 && (

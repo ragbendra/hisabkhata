@@ -6,6 +6,7 @@ import BsDatePicker from "../components/BsDatePicker";
 import CratesAdjustButton from "../components/CratesAdjustButton";
 import CratesBadge from "../components/CratesBadge";
 import { DeleteCustomerButton, DeleteEntryButton } from "../components/EntryActions";
+import ReceivedDialog from "../components/ReceivedDialog";
 import LedgerCompact from "../components/LedgerCompact";
 import { StatementPdfButtons } from "../components/PdfActions";
 import { IconBack, IconPlus, initial } from "../components/icons";
@@ -30,7 +31,7 @@ export default function CustomerPage() {
   const histQ = useHistory(id);
   const { outbox } = useCustomers();
   const [open, setOpen] = useState<HistoryEntry | null>(null);
-  const [modal, setModal] = useState<null | "edit" | "merge" | "date">(null);
+  const [modal, setModal] = useState<null | "edit" | "merge" | "date" | "received">(null);
   const [err, setErr] = useState<string | null>(null);
 
   const mine = useMemo(() => groupPending(outbox).get(id), [outbox, id]);
@@ -114,9 +115,9 @@ export default function CustomerPage() {
             <IconPlus size={18} className="mr-1.5" />
             {t("navEntry")}
           </Link>
-          <Link className="btn-secondary flex-1" to={`/entry?customer=${s.id}&focus=received`}>
+          <button className="btn-secondary flex-1" onClick={() => setModal("received")}>
             {t("receivedBtn")}
-          </Link>
+          </button>
         </div>
       </div>
 
@@ -190,6 +191,7 @@ export default function CustomerPage() {
           }}
         />
       )}
+      {modal === "received" && <ReceivedDialog customerId={s.id} customerName={s.name} owner={owner} onClose={() => setModal(null)} onDone={invalidate} />}
       {modal === "edit" && <EditCustomer sheet={s} onClose={() => setModal(null)} onSave={(b) => patch.mutate(b, { onSuccess: () => setModal(null) })} />}
       {modal === "merge" && <MergeModal sheet={s} onClose={() => setModal(null)} onDone={(into) => { setModal(null); nav(`/customer/${into}`, { replace: true }); invalidate(); }} />}
       {modal === "date" && (

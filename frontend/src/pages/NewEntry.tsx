@@ -1,7 +1,7 @@
 import { useLiveQuery } from "dexie-react-hooks";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import BsDatePicker from "../components/BsDatePicker";
 import { CratesField, parseCrates } from "../components/CratesFields";
 import UndoBar from "../components/UndoBar";
@@ -16,6 +16,15 @@ import { useFmt } from "../lib/format";
 import { useCustomers, useFruitNames, useMe, useSettings } from "../lib/queries";
 import { flushOutbox } from "../lib/sync";
 import { PAY_MODES, type EntryPayload } from "../lib/types";
+
+/** One step back to the customer's ledger when the entry was opened from it; otherwise to the given page. */
+function useGoBack(fromCustomer: boolean, to: string) {
+  const nav = useNavigate();
+  return () => {
+    if (fromCustomer && typeof window.history.state?.idx === "number" && window.history.state.idx > 0) nav(-1);
+    else nav(to);
+  };
+}
 
 interface Saved {
   saveId: string;
@@ -50,6 +59,7 @@ export default function NewEntryPage() {
     return (
       <SavedScreen
         saved={saved}
+        backTo={paramCustomer ? `/customer/${paramCustomer}` : undefined}
         onNew={(keepContext) => {
           setSaved(null);
           appliedParam.current = true;
@@ -65,6 +75,7 @@ export default function NewEntryPage() {
       draft={draft}
       update={update}
       focusReceived={params.get("focus") === "received"}
+      backTo={paramCustomer ? `/customer/${paramCustomer}` : "/"}
       isOwner={me.role === "owner"}
       onClear={() => reset()}
       onSaved={(s) => {
@@ -77,9 +88,10 @@ export default function NewEntryPage() {
 
 // ------------------------------------------------------------------------------------------------
 
-function SavedScreen({ saved, onNew }: { saved: Saved; onNew: (keepContext?: boolean) => void }) {
+function SavedScreen({ saved, onNew, backTo }: { saved: Saved; onNew: (keepContext?: boolean) => void; backTo?: string }) {
   const { t } = useTranslation();
   const f = useFmt();
+  const goBack = useGoBack(true, backTo ?? "/");
   const row = useLiveQuery(async () => (await db.outbox.get(saved.saveId)) ?? null, [saved.saveId], undefined);
   const undone = useLiveQuery(async () => !(await db.drafts.get("last-saved")), [], false);
   const failed = row?.failed;
@@ -110,6 +122,11 @@ function SavedScreen({ saved, onNew }: { saved: Saved; onNew: (keepContext?: boo
           {t("addAnotherPast", { name: saved.name, date: f.date(saved.date) })}
         </button>
       )}
+      {backTo && (
+        <button type="button" className="btn-primary w-full" onClick={goBack}>
+          {t("backToLedger", { defaultValue: "Back to ledger" })}
+        </button>
+      )}
       <div className="flex gap-2">
         <button className={saved.date && saved.date < todayNpl() ? "btn-secondary flex-1" : "btn-primary flex-1"} onClick={() => onNew()}>
           {t("newEntry")}
@@ -128,6 +145,7 @@ function EntryForm({
   draft,
   update,
   focusReceived,
+  backTo,
   isOwner,
   onClear,
   onSaved,
@@ -135,12 +153,14 @@ function EntryForm({
   draft: EntryDraft;
   update: (p: Partial<EntryDraft> | ((d: EntryDraft) => EntryDraft)) => void;
   focusReceived: boolean;
+  backTo: string;
   isOwner: boolean;
   onClear: () => void;
   onSaved: (s: Saved) => void;
 }) {
   const { t } = useTranslation();
   const f = useFmt();
+  const goBack = useGoBack(backTo !== "/", backTo);
   const { customers, pending } = useCustomers();
   const fruits = useFruitNames().data ?? [];
   const settings = useSettings().data;
@@ -357,9 +377,9 @@ function EntryForm({
       <UndoBar />
       <div className="-ml-2 flex items-center justify-between">
         <div className="flex items-center gap-1">
-          <Link to="/" className="flex h-11 w-11 items-center justify-center rounded-full" aria-label={t("navKhata")}>
+          <button type="button" onClick={goBack} className="flex h-11 w-11 items-center justify-center rounded-full" aria-label={t("back")}>
             <IconBack />
-          </Link>
+          </button>
           <h1 className="font-serif text-2xl font-semibold">{t("newEntry")}</h1>
         </div>
         {!draftIsBlank(draft) && (

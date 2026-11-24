@@ -2,7 +2,11 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
+import { addDays, todayNpl } from "../lib/calc";
 import { useTrackCrates } from "../lib/crates";
+import { useFmt } from "../lib/format";
+import { useMe } from "../lib/queries";
+import BsDatePicker from "./BsDatePicker";
 import { CratesField, parseCrates } from "./CratesFields";
 
 /*
@@ -14,6 +18,12 @@ export default function CratesAdjustButton({ customerId, onDone, className = "bt
   const { t } = useTranslation();
   const qc = useQueryClient();
   const track = useTrackCrates();
+  const f = useFmt();
+  const owner = useMe().data?.role === "owner";
+  const today = todayNpl();
+  const yesterday = addDays(today, -1);
+  const [date, setDate] = useState<string | null>(null); // null = today; only the owner can change it
+  const [pickDate, setPickDate] = useState(false);
   const [open, setOpen] = useState(false);
   const [dir, setDir] = useState<"back" | "lent">("back");
   const [n, setN] = useState("");
@@ -23,7 +33,9 @@ export default function CratesAdjustButton({ customerId, onDone, className = "bt
   if (!track) return null;
 
   const count = parseCrates(n);
-  const ok = count !== null && count > 0;
+  const ok = count !== null && count > 0 && !(owner && !!date && date > today);
+  const chip = (on: boolean) => `chip ${on ? "chip-on" : ""}`;
+  const otherOn = pickDate || (!!date && date !== today && date !== yesterday);
 
   async function save() {
     if (!ok) return;
@@ -37,11 +49,14 @@ export default function CratesAdjustButton({ customerId, onDone, className = "bt
           created_at: new Date().toISOString(),
           ...(dir === "back" ? { crates_back: count } : { crates_lent: count }),
           ...(note.trim() ? { note: note.trim() } : {}),
+          ...(owner && date && date !== today ? { entry_date: date } : {}),
         },
       });
       setOpen(false);
       setN("");
       setNote("");
+      setDate(null);
+      setPickDate(false);
       await qc.invalidateQueries();
       onDone?.();
     } catch (x) {
@@ -68,6 +83,18 @@ export default function CratesAdjustButton({ customerId, onDone, className = "bt
         </button>
       </div>
       <CratesField id="adjcrates" label={t("cratesCount", { defaultValue: "Number of crates" })} value={n} onChange={setN} showError />
+      {owner && (
+        <div className="space-y-2">
+          <span className="label">{t("date")}</span>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" className={chip(!date || date === today)} onClick={() => { setPickDate(false); setDate(null); }}>{t("dateToday")}</button>
+            <button type="button" className={chip(date === yesterday)} onClick={() => { setPickDate(false); setDate(yesterday); }}>{t("dateYesterday")}</button>
+            <button type="button" className={chip(otherOn)} onClick={() => { setPickDate(true); setDate(date ?? yesterday); }}>{t("dateOther")}</button>
+          </div>
+          {otherOn && <BsDatePicker value={date ?? today} onChange={(d) => setDate(d === today ? null : d)} yearsBack={5} yearsForward={0} />}
+          {date && <p className="font-medium">{f.date(date)}</p>}
+        </div>
+      )}
       <input className="field" maxLength={300} placeholder={t("noteOptional", { defaultValue: "Note (optional)" })} value={note} onChange={(e) => setNote(e.target.value)} />
       {err && <p role="alert" className="text-sm text-owed">{err}</p>}
       <div className="flex gap-2">
